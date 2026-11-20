@@ -1,0 +1,408 @@
+{
+  "version": "7.2",
+  "screens": [
+    {
+      "id": "PERSONAL",
+      "title": "بياناتك",
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextSubheading",
+            "text": "تسجيل عميل جديد — هلال الشرق"
+          },
+          {
+            "type": "TextInput",
+            "name": "full_name",
+            "label": "الاسم الكامل",
+            "input-type": "text",
+            "required": true,
+            "max-chars": 80
+          },
+          {
+            "type": "TextInput",
+            "name": "email",
+            "label": "البريد الإلكتروني",
+            "input-type": "email",
+            "required": true
+          },
+          {
+            "type": "TextInput",
+            "name": "alt_phone",
+            "label": "جوال إضافي",
+            "input-type": "phone",
+            "required": false,
+            "helper-text": "اختياري"
+          },
+          {
+            "type": "RadioButtonsGroup",
+            "name": "customer_type",
+            "label": "نوع العميل",
+            "required": true,
+            "data-source": [
+              {
+                "id": "individual",
+                "title": "فرد"
+              },
+              {
+                "id": "company",
+                "title": "شركة / مؤسسة"
+              }
+            ]
+          },
+          {
+            "type": "TextInput",
+            "name": "company_name",
+            "label": "اسم المنشأة",
+            "input-type": "text",
+            "required": false,
+            "helper-text": "للشركات فقط"
+          },
+          {
+            "type": "TextInput",
+            "name": "cr_number",
+            "label": "رقم السجل التجاري",
+            "input-type": "text",
+            "required": false,
+            "max-chars": 10,
+            "helper-text": "للشركات فقط"
+          },
+          {
+            "type": "Footer",
+            "label": "التالي",
+            "on-click-action": {
+              "name": "navigate",
+              "next": {
+                "type": "screen",
+                "name": "ADDRESS"
+              },
+              "payload": {
+                "full_name": "${form.full_name}",
+                "email": "${form.email}",
+                "alt_phone": "${form.alt_phone}",
+                "customer_type": "${form.customer_type}",
+                "company_name": "${form.company_name}",
+                "cr_number": "${form.cr_number}"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ADDRESS",
+      "title": "العنوان الوطني",
+      "data": {
+        "full_name": {
+          "type": "string",
+          "__example__": "محمد"
+        },
+        "email": {
+          "type": "string",
+          "__example__": "a@b.com"
+        },
+        "alt_phone": {
+          "type": "string",
+          "__example__": ""
+        },
+        "customer_type": {
+          "type": "string",
+          "__example__": "individual"
+        },
+        "company_name": {
+          "type": "string",
+          "__example__": ""
+        },
+        "cr_number": {
+          "type": "string",
+          "__example__": ""
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextBody",
+            "text": "عنوان التسليم داخل المملكة العربية السعودية"
+          },
+          {
+            "type": "Dropdown",
+            "name": "region",
+            "label": "المنطقة",
+            "required": true,
+            "data-source": [
+              {
+                "id": "riyadh",
+                "title": "الرياض"
+              },
+              {
+                "id": "makkah",
+                "title": "مكة المكرمة"
+              },
+              {
+                "id": "madinah",
+                "title": "المدينة المنورة"
+              },
+              {
+                "id": "eastern",
+                "title": "المنطقة الشرقية"
+              },
+              {
+                "id": "qassim",
+                "title": "القصيم"
+              },
+              {
+                "id": "asir",
+                "title": "عسير"
+              },
+              {
+                "id": "tabuk",
+                "title": "تبوك"
+              },
+              {
+                "id": "hail",
+                "title": "حائل"
+              },
+              {
+                "id": "northern_borders",
+                "title": "الحدود الشمالية"
+              },
+              {
+                "id": "jazan",
+                "title": "جازان"
+              },
+              {
+                "id": "najran",
+                "title": "نجران"
+              },
+              {
+                "id": "baha",
+                "title": "الباحة"
+              },
+              {
+                "id": "jouf",
+                "title": "الجوف"
+              }
+            ]
+          },
+          {
+            "type": "TextInput",
+            "name": "city",
+            "label": "المدينة",
+            "input-type": "text",
+            "required": true
+          },
+          {
+            "type": "TextInput",
+            "name": "district",
+            "label": "الحي",
+            "input-type": "text",
+            "required": true
+          },
+          {
+            "type": "TextInput",
+            "name": "street",
+            "label": "الشارع",
+            "input-type": "text",
+            "required": true
+          },
+          {
+            "type": "TextInput",
+            "name": "building_no",
+            "label": "رقم المبنى",
+            "input-type": "text",
+            "required": true,
+            "max-chars": 4
+          },
+          {
+            "type": "TextInput",
+            "name": "unit_no",
+            "label": "رقم الوحدة",
+            "input-type": "text",
+            "required": false
+          },
+          {
+            "type": "TextInput",
+            "name": "short_address",
+            "label": "العنوان المختصر",
+            "input-type": "text",
+            "required": false,
+            "max-chars": 8,
+            "helper-text": "مثال: RRRD2929"
+          },
+          {
+            "type": "TextInput",
+            "name": "postal_code",
+            "label": "الرمز البريدي",
+            "input-type": "text",
+            "required": true,
+            "max-chars": 5
+          },
+          {
+            "type": "TextInput",
+            "name": "additional_no",
+            "label": "الرقم الإضافي",
+            "input-type": "text",
+            "required": false,
+            "max-chars": 4
+          },
+          {
+            "type": "Footer",
+            "label": "التالي",
+            "on-click-action": {
+              "name": "navigate",
+              "next": {
+                "type": "screen",
+                "name": "CONFIRM"
+              },
+              "payload": {
+                "full_name": "${data.full_name}",
+                "email": "${data.email}",
+                "alt_phone": "${data.alt_phone}",
+                "customer_type": "${data.customer_type}",
+                "company_name": "${data.company_name}",
+                "cr_number": "${data.cr_number}",
+                "region": "${form.region}",
+                "city": "${form.city}",
+                "district": "${form.district}",
+                "street": "${form.street}",
+                "building_no": "${form.building_no}",
+                "unit_no": "${form.unit_no}",
+                "short_address": "${form.short_address}",
+                "postal_code": "${form.postal_code}",
+                "additional_no": "${form.additional_no}"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "CONFIRM",
+      "title": "المستلم والتأكيد",
+      "terminal": true,
+      "data": {
+        "full_name": {
+          "type": "string",
+          "__example__": "محمد"
+        },
+        "email": {
+          "type": "string",
+          "__example__": "a@b.com"
+        },
+        "alt_phone": {
+          "type": "string",
+          "__example__": ""
+        },
+        "customer_type": {
+          "type": "string",
+          "__example__": "individual"
+        },
+        "company_name": {
+          "type": "string",
+          "__example__": ""
+        },
+        "cr_number": {
+          "type": "string",
+          "__example__": ""
+        },
+        "region": {
+          "type": "string",
+          "__example__": "riyadh"
+        },
+        "city": {
+          "type": "string",
+          "__example__": "الرياض"
+        },
+        "district": {
+          "type": "string",
+          "__example__": "العليا"
+        },
+        "street": {
+          "type": "string",
+          "__example__": "التحلية"
+        },
+        "building_no": {
+          "type": "string",
+          "__example__": "1234"
+        },
+        "unit_no": {
+          "type": "string",
+          "__example__": ""
+        },
+        "short_address": {
+          "type": "string",
+          "__example__": ""
+        },
+        "postal_code": {
+          "type": "string",
+          "__example__": "12345"
+        },
+        "additional_no": {
+          "type": "string",
+          "__example__": ""
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextBody",
+            "text": "لو مستلم الشحنة شخص غيرك اكتب بياناته، ولو أنت المستلم اتركها فاضية."
+          },
+          {
+            "type": "TextInput",
+            "name": "recipient_name",
+            "label": "اسم المستلم",
+            "input-type": "text",
+            "required": false
+          },
+          {
+            "type": "TextInput",
+            "name": "recipient_phone",
+            "label": "جوال المستلم",
+            "input-type": "phone",
+            "required": false
+          },
+          {
+            "type": "TextCaption",
+            "text": "تقدر تقرأ سياسة الخصوصية من الرابط اللي في رسالة التسجيل."
+          },
+          {
+            "type": "OptIn",
+            "name": "privacy_consent",
+            "label": "أوافق على سياسة الخصوصية وجمع بياناتي لتقديم الخدمة",
+            "required": true
+          },
+          {
+            "type": "Footer",
+            "label": "إنهاء التسجيل",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "full_name": "${data.full_name}",
+                "email": "${data.email}",
+                "alt_phone": "${data.alt_phone}",
+                "customer_type": "${data.customer_type}",
+                "company_name": "${data.company_name}",
+                "cr_number": "${data.cr_number}",
+                "region": "${data.region}",
+                "city": "${data.city}",
+                "district": "${data.district}",
+                "street": "${data.street}",
+                "building_no": "${data.building_no}",
+                "unit_no": "${data.unit_no}",
+                "short_address": "${data.short_address}",
+                "postal_code": "${data.postal_code}",
+                "additional_no": "${data.additional_no}",
+                "recipient_name": "${form.recipient_name}",
+                "recipient_phone": "${form.recipient_phone}",
+                "privacy_consent": "${form.privacy_consent}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

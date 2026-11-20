@@ -2,10 +2,11 @@ import type { Inbound } from "../whatsapp/types";
 import { wa } from "../whatsapp/send";
 import { getOrCreateConversation, getOrCreateCustomer, logInbound, logOutbound } from "./repo";
 import { GROUPS, MENU_IDS, sendGroupMenu, sendMainMenu, type GroupKey } from "./menu";
+import { registrationSummary, saveRegistration, sendRegistrationFlow } from "./registration";
 
 /**
- * Step 1 handler: identify customer, dedupe, log, and drive the menu.
- * Step 2 adds registration; Step 3 replaces free-text handling with the LLM agent.
+ * Step 2 handler: identify → dedupe → registration gate (WhatsApp Flow) → menu.
+ * Step 3 replaces free-text handling with the LLM agent.
  */
 export async function handleIncoming(msg: Inbound) {
   const { customer, isNew } = await getOrCreateCustomer(msg.waId);
@@ -23,7 +24,30 @@ export async function handleIncoming(msg: Inbound) {
     await logOutbound(conv.id, r.messages?.[0]?.id, "text", text);
   };
 
-  // --- Menu navigation by interactive ids ---
+  // --- 1. Registration form submitted ---
+  if (msg.flowResponse && typeof msg.flowResponse.flow_token === "string" && msg.flowResponse.flow_token.startsWith("reg:")) {
+    const res = await saveRegistration(customer, conv, msg.flowResponse);
+    if (res.ok) {
+      await reply(registrationSummary(res.customer));
+      await sendMainMenu(msg.waId, "إزاي نقدر نساعدك؟");
+      return;
+    }
+    if (res.reason === "invalid") {
+      await reply(`⚠️ في بيانات ناقصة أو غير صحيحة:\n• ${res.missing?.join("\n• ")}\n\nممكن تعبي النموذج مرة ثانية؟`);
+    }
+    return sendRegistrationFlow(customer, conv, "افتح النموذج وكمّل بياناتك 👇");
+  }
+
+  // --- 2. Not registered yet → registration form (human handoff still allowed) ---
+  if (!customer.registration_complete) {
+    if (msg.replyId === MENU_IDS.human) return reply("تم تحويل طلبك لموظف خدمة العملاء، وهيتواصل معاك قريب.");
+    const intro = isNew
+      ? "أهلاً بيك في *هلال الشرق للتجارة* 🌙\nمنصة الخدمات التجارية المتكاملة للاستيراد من الصين.\n\nقبل ما نبدأ، محتاجين نسجل بياناتك مرة واحدة بس (أقل من دقيقتين)."
+      : "لسه فاضل نكمّل تسجيل بياناتك عشان نقدر نخدمك 👇";
+    return sendRegistrationFlow(customer, conv, intro);
+  }
+
+  // --- 3. Menu navigation by interactive ids ---
   const id = msg.replyId ?? "";
   if (id.startsWith("grp:")) {
     const g = id.slice(4) as GroupKey;
@@ -35,11 +59,7 @@ export async function handleIncoming(msg: Inbound) {
   if (id === MENU_IDS.myOrders) return reply("لسه مفيش طلبات على حسابك.");
   if (id === MENU_IDS.human) return reply("تم تحويل طلبك لموظف خدمة العملاء، وهيتواصل معاك قريب.");
 
-  // --- Free text (LLM agent comes in Step 3) ---
-  const name = customer.full_name ?? msg.profileName ?? "";
-  const greeting = isNew
-    ? `أهلاً بيك في *هلال الشرق للتجارة* 🌙\nمنصة الخدمات التجارية المتكاملة للاستيراد من الصين.\nرقم العميل الخاص بيك: *${customer.code}*`
-    : `أهلاً ${name} 👋\nرقم العميل: *${customer.code}*\nإزاي نقدر نساعدك؟`;
-  await sendMainMenu(msg.waId, greeting);
+  // --- 4. Free text (LLM agent comes in Step 3) ---
+  await sendMainMenu(msg.waId, `أهلاً ${customer.full_name ?? ""} 👋\nرقم العميل: *${customer.code}*\nإزاي نقدر نساعدك؟`);
   await logOutbound(conv.id, undefined, "interactive", "[main_menu]");
 }

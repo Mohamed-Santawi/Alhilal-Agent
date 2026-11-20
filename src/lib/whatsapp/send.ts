@@ -56,6 +56,34 @@ export const wa = {
     });
   },
 
+  /** Opens a WhatsApp Flow (form inside WhatsApp). The submission comes back as interactive.nfm_reply. */
+  flow: (to: string, opts: {
+    body: string; cta: string; flowId: string; flowToken: string; screen: string;
+    header?: string; footer?: string; data?: Record<string, unknown>; mode?: "draft" | "published";
+  }) =>
+    callApi({
+      to,
+      type: "interactive",
+      interactive: {
+        type: "flow",
+        ...(opts.header ? { header: { type: "text", text: opts.header } } : {}),
+        body: { text: opts.body },
+        ...(opts.footer ? { footer: { text: opts.footer } } : {}),
+        action: {
+          name: "flow",
+          parameters: {
+            flow_message_version: "3",
+            flow_token: opts.flowToken,
+            flow_id: opts.flowId,
+            flow_cta: opts.cta.slice(0, 20),
+            flow_action: "navigate",
+            flow_action_payload: { screen: opts.screen, ...(opts.data ? { data: opts.data } : {}) },
+            ...(opts.mode === "draft" ? { mode: "draft" } : {}),
+          },
+        },
+      },
+    }),
+
   /** Template message — required to message a customer outside the 24h window. */
   template: (to: string, name: string, lang = "ar", bodyParams: string[] = []) =>
     callApi({
