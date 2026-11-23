@@ -22,6 +22,7 @@ const coreFields = {
     customer_type: z.enum(["individual", "company"]),
     company_name: opt,
     cr_number: opt,
+    vat_number: z.preprocess((v) => (typeof v === "string" ? v.replace(/\s/g, "") : v), opt),
     region: req, // Flow sends a key (riyadh), chat sends free text (الرياض)
     city: req,
     district: req,
@@ -36,7 +37,9 @@ const coreFields = {
     privacy_consent: z.preprocess((v) => v === true || v === "true", z.literal(true)),
 };
 
-const companyRule = (d: { customer_type: string; company_name?: string; cr_number?: string }, ctx: z.RefinementCtx) => {
+const companyRule = (d: { customer_type: string; company_name?: string; cr_number?: string; vat_number?: string }, ctx: z.RefinementCtx) => {
+  if (d.vat_number && !/^3\d{13}3$/.test(d.vat_number))
+    ctx.addIssue({ code: "custom", path: ["vat_number"], message: "الرقم الضريبي 15 رقم يبدأ وينتهي بـ 3" });
     if (d.customer_type === "company" && !d.company_name)
       ctx.addIssue({ code: "custom", path: ["company_name"], message: "اسم المنشأة مطلوب للشركات" });
     if (d.customer_type === "company" && !d.cr_number)
@@ -57,7 +60,7 @@ export function normalizeRegion(input: string): string {
 
 const FIELD_AR: Record<string, string> = {
   full_name: "الاسم", email: "البريد الإلكتروني", customer_type: "نوع العميل", company_name: "اسم المنشأة",
-  cr_number: "رقم السجل التجاري", region: "المنطقة", city: "المدينة", district: "الحي", street: "الشارع",
+  cr_number: "رقم السجل التجاري", vat_number: "الرقم الضريبي (15 رقم يبدأ وينتهي بـ 3)", region: "المنطقة", city: "المدينة", district: "الحي", street: "الشارع",
   building_no: "رقم المبنى (4 أرقام)", postal_code: "الرمز البريدي (5 أرقام)", privacy_consent: "الموافقة على سياسة الخصوصية",
 };
 
@@ -108,6 +111,7 @@ export async function persistRegistration(customer: Customer, conv: Conversation
       type: d.customer_type,
       company_name: d.customer_type === "company" ? d.company_name : null,
       cr_number: d.customer_type === "company" ? d.cr_number : null,
+      vat_number: d.customer_type === "company" ? (d.vat_number ?? null) : null,
       privacy_consent_at: new Date().toISOString(),
       registration_complete: true,
     })
@@ -149,7 +153,5 @@ export function registrationSummary(c: Customer & Record<string, unknown>) {
     ``,
     `رقم العميل: *${c.code}*`,
     `احتفظ بالرقم ده، هتحتاجه في أي تواصل معانا.`,
-    ``,
-    `اختار الخدمة اللي محتاجها من القايمة 👇`,
   ].join("\n");
 }

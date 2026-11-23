@@ -3,7 +3,7 @@ import { wa, WaApiError } from "../whatsapp/send";
 import type { Inbound } from "../whatsapp/types";
 import { logOutbound, setState, type Conversation, type Customer } from "./repo";
 import { CoreRegistrationSchema, persistRegistration, sendRegistrationFlow, registrationSummary, type RegistrationData } from "./registration";
-import { sendMainMenu } from "./menu";
+import { onRegistered } from "./quotes";
 import { sendRegistrationLink } from "./registration-web";
 
 /**
@@ -51,6 +51,15 @@ const STEPS: Step[] = [
   {
     key: "cr_number", when: (d) => d.customer_type === "company", ask: () => "ما رقم السجل التجاري (أو الرقم الموحد)؟",
     parse: (t) => { const d = onlyDigits(t); return d.length >= 7 && d.length <= 10 ? { value: d } : { error: "رقم السجل لازم يكون من 7 إلى 10 أرقام." }; },
+  },
+  {
+    key: "vat_number", when: (d) => d.customer_type === "company", buttons: [SKIP],
+    ask: () => "رقم شهادة التسجيل في ضريبة القيمة المضافة؟ (15 رقم)\nلو مش مسجّل اضغط تخطي.",
+    parse: (t, id) => {
+      if (id === SKIP.id || /تخطي/.test(t)) return { value: "" };
+      const d = onlyDigits(t);
+      return /^3\d{13}3$/.test(d) ? { value: d } : { error: "الرقم الضريبي 15 رقم يبدأ وينتهي بـ 3. أو اضغط تخطي." };
+    },
   },
   { key: "region", ask: () => "📍 *العنوان الوطني*\nفي أي منطقة؟ (مثال: الرياض، مكة المكرمة، المنطقة الشرقية)", parse: required(3, 40) },
   { key: "city", ask: () => "المدينة؟", parse: required(2, 40) },
@@ -174,6 +183,6 @@ export async function handleChatRegistration(customer: Customer, conv: Conversat
   const saved = await persistRegistration(customer, conv, parsed.data);
   const r = await wa.text(customer.wa_id, registrationSummary(saved));
   await logOutbound(conv.id, r.messages?.[0]?.id, "text", "[registration_done]");
-  await sendMainMenu(customer.wa_id, "إزاي نقدر نساعدك؟");
+  await onRegistered(saved);
   return true;
 }

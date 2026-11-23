@@ -12,6 +12,7 @@ export type GroupKey = keyof typeof GROUPS;
 export const MENU_IDS = {
   group: (g: GroupKey) => `grp:${g}`,
   service: (key: string) => `svc:${key}`,
+  quote: "act:quote",
   myOrders: "act:my_orders",
   human: "act:human",
 };
@@ -20,9 +21,12 @@ export async function sendMainMenu(to: string, greeting: string) {
   return wa.list(to, greeting, "اختر الخدمة", [
     {
       title: "الخدمات",
-      rows: (Object.keys(GROUPS) as GroupKey[]).map((g) => ({
-        id: MENU_IDS.group(g), title: GROUPS[g].title, description: GROUPS[g].desc,
-      })),
+      rows: [
+        { id: MENU_IDS.quote, title: "حاسبة أسعار الشحن", description: "اعرف سعر شحنتك فوراً من غير تسجيل" },
+        ...(Object.keys(GROUPS) as GroupKey[]).map((g) => ({
+          id: MENU_IDS.group(g), title: GROUPS[g].title, description: GROUPS[g].desc,
+        })),
+      ],
     },
     {
       title: "حسابي",

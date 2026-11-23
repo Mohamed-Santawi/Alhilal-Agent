@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/supabase";
 import { claimFormToken, peekFormToken, releaseFormToken } from "@/lib/forms/tokens";
 import { CoreRegistrationSchema, persistRegistration, registrationSummary } from "@/lib/bot/registration";
-import { sendMainMenu } from "@/lib/bot/menu";
+import { onRegistered } from "@/lib/bot/quotes";
 import { logOutbound, type Conversation, type Customer } from "@/lib/bot/repo";
 import { wa } from "@/lib/whatsapp/send";
 
@@ -14,6 +14,7 @@ const FIELD_ERR: Record<string, string> = {
   customer_type: "اختار نوع العميل",
   company_name: "اسم المنشأة مطلوب للشركات",
   cr_number: "رقم السجل التجاري مطلوب للشركات",
+  vat_number: "الرقم الضريبي 15 رقم يبدأ وينتهي بـ 3",
   region: "اختار المنطقة",
   city: "اكتب المدينة",
   district: "اكتب الحي",
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest) {
     try {
       const r = await wa.text(saved.wa_id, registrationSummary(saved));
       await logOutbound(conv.data.id, r.messages?.[0]?.id, "text", "[registration_done_web]");
-      await sendMainMenu(saved.wa_id, "إزاي نقدر نساعدك؟");
+      await onRegistered(saved);
     } catch (err) {
       console.error("[register] saved, but WhatsApp confirmation failed", err);
     }
