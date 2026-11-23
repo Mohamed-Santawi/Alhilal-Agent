@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { peekFormToken } from "@/lib/forms/tokens";
 import { db } from "@/lib/supabase";
-import { getShippingSettings, listCategoryOptions } from "@/lib/shipping/repo";
+import { getShippingSettings, listCategoryOptions, listContainerOptions } from "@/lib/shipping/repo";
 import { Shell } from "../register/Shell";
 import QuoteForm from "./QuoteForm";
 
@@ -27,8 +27,9 @@ export default async function QuotePage({ searchParams }: { searchParams: Promis
     );
   }
 
-  const [categories, settings, cust] = await Promise.all([
+  const [categories, containers, settings, cust] = await Promise.all([
     listCategoryOptions(),
+    listContainerOptions(),
     getShippingSettings(),
     db().from("customers").select("code, registration_complete").eq("id", tok.customer_id).single(),
   ]);
@@ -38,6 +39,7 @@ export default async function QuotePage({ searchParams }: { searchParams: Promis
       <QuoteForm
         token={t}
         categories={categories}
+        containers={containers}
         samples={settings.prices_are_samples}
         divisor={settings.air_volumetric_divisor}
       />

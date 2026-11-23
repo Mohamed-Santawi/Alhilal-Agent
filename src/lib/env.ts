@@ -19,6 +19,10 @@ const schema = z.object({
   VERCEL_PROJECT_PRODUCTION_URL: z.string().optional(),
   WHATSAPP_FLOW_MODE: z.enum(["draft", "published"]).default("draft"), // draft = test before publishing the flow
   PRIVACY_POLICY_URL: z.string().url().optional(),
+
+  // Admin panel login (Supabase Auth). These two are public by design (browser uses them).
+  NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().optional(),
 });
 
 let cached: z.infer<typeof schema> | null = null;

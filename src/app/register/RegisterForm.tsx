@@ -8,7 +8,7 @@ type Errors = Record<string, string>;
 
 const initial: Values = {
   full_name: "", email: "", alt_phone: "",
-  customer_type: "individual", company_name: "", cr_number: "",
+  customer_type: "individual", company_name: "", cr_number: "", vat_number: "",
   region: "", city: "", district: "", street: "", building_no: "", unit_no: "",
   short_address: "", postal_code: "", additional_no: "",
   recipient_other: false, recipient_name: "", recipient_phone: "",
@@ -26,6 +26,8 @@ function validate(v: Values): Errors {
   if (v.customer_type === "company") {
     if (!s("company_name")) e.company_name = "اسم المنشأة مطلوب";
     if (!/^\d{7,10}$/.test(toLatinDigits(s("cr_number")))) e.cr_number = "رقم السجل من 7 إلى 10 أرقام";
+    const vat = toLatinDigits(s("vat_number")).replace(/\s/g, "");
+    if (vat && !/^3\d{13}3$/.test(vat)) e.vat_number = "15 رقم يبدأ وينتهي بـ 3";
   }
   if (!s("region")) e.region = "اختار المنطقة";
   if (!s("city")) e.city = "اكتب المدينة";
@@ -70,6 +72,7 @@ export default function RegisterForm({ token, privacyUrl }: { token: string; pri
       customer_type: v.customer_type,
       company_name: v.customer_type === "company" ? s("company_name") : "",
       cr_number: v.customer_type === "company" ? s("cr_number") : "",
+      vat_number: v.customer_type === "company" ? s("vat_number").replace(/\s/g, "") : "",
       region: v.region, city: s("city"), district: s("district"), street: s("street"),
       building_no: s("building_no"), unit_no: s("unit_no"),
       short_address: s("short_address").replace(/\s/g, "").toUpperCase(),
@@ -135,6 +138,7 @@ export default function RegisterForm({ token, privacyUrl }: { token: string; pri
           <>
             <Field label="اسم المنشأة" name="company_name" v={v} set={set} errors={errors} autoComplete="organization" />
             <Field label="رقم السجل التجاري" name="cr_number" inputMode="numeric" dir="ltr" v={v} set={set} errors={errors} />
+            <Field label="رقم شهادة التسجيل في ضريبة القيمة المضافة" name="vat_number" inputMode="numeric" maxLength={15} dir="ltr" optional placeholder="3XXXXXXXXXXXXX3" v={v} set={set} errors={errors} />
           </>
         )}
       </Section>

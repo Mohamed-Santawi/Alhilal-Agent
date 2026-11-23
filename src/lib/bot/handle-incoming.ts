@@ -56,7 +56,7 @@ export async function handleIncoming(msg: Inbound) {
   }
   if (id.startsWith("svc:")) {
     const key = id.slice(4);
-    if (key === "shipping_lcl") return sendQuoteLink(customer, conv); // LCL / air → calculator first
+    if (key === "shipping_lcl" || key === "shipping_fcl") return sendQuoteLink(customer, conv); // shipping → calculator first
     if (!customer.registration_complete) {
       conv.state = { ...conv.state, pending_service: { key, name: msg.text ?? key } };
       await setState(conv.id, conv.state);

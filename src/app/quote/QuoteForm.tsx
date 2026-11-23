@@ -1,10 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { QuoteBreakdown } from "@/lib/shipping/pricing";
+import type { Kind, QuoteBreakdown } from "@/lib/shipping/pricing";
 
-type Mode = "sea" | "air";
-type Category = { key: string; name_ar: string; hint_ar: string | null; modes: Mode[] };
+type Category = { key: string; name_ar: string; hint_ar: string | null; kinds: Kind[] };
+type Container = { key: string; name_ar: string; hint_ar: string | null; price: number | null };
+
+const KINDS: { kind: Kind; label: string; sub: string }[] = [
+  { kind: "air", label: "جوي ✈️", sub: "بالكيلو · أقل شي 20 كجم" },
+  { kind: "lcl", label: "بحري مجمّع LCL 🚢", sub: "بالمتر المكعب · أقل شي 1 CBM" },
+  { kind: "fcl", label: "حاوية كاملة FCL 📦", sub: "حاويات 20 و40 قدم، ومبرّدة" },
+];
+const KIND_LABEL: Record<Kind, string> = { air: "جوي ✈️", lcl: "بحري مجمّع (LCL) 🚢", fcl: "حاوية كاملة (FCL) 📦" };
 type Row = { qty: string; l: string; w: string; h: string; kg: string };
 type Result = { quote: { id: string; code: string; valid_until: string }; category: string; b: QuoteBreakdown; registered: boolean; samples: boolean };
 
@@ -24,10 +31,13 @@ async function resizeImage(file: File, max = 1600): Promise<Blob> {
   return new Promise((res) => canvas.toBlob((b) => res(b ?? file), "image/jpeg", 0.82));
 }
 
-export default function QuoteForm({ token, categories, samples, divisor }: { token: string; categories: Category[]; samples: boolean; divisor: number }) {
+export default function QuoteForm({ token, categories, containers, samples, divisor }: {
+  token: string; categories: Category[]; containers: Container[]; samples: boolean; divisor: number;
+}) {
   const [category, setCategory] = useState("");
-  const [mode, setMode] = useState<Mode | "">("");
+  const [kind, setKind] = useState<Kind | "">("");
   const [rows, setRows] = useState<Row[]>([{ ...emptyRow }]);
+  const [counts, setCounts] = useState<Record<string, number>>({});
   const [photo, setPhoto] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -52,17 +62,24 @@ export default function QuoteForm({ token, categories, samples, divisor }: { tok
     ev.preventDefault();
     setError("");
     if (!category) return setError("اختار نوع البضاعة");
-    if (!mode) return setError("اختار طريقة الشحن");
-    const cartons = rows
-      .filter((r) => Object.values(r).some((v) => v.trim()))
-      .map((r) => ({ qty: n(r.qty), l: n(r.l), w: n(r.w), h: n(r.h), kg: n(r.kg) }));
-    if (!cartons.length) return setError("أدخل بيانات الكراتين");
-    if (cartons.some((c) => Object.values(c).some((v) => !(v > 0)))) return setError("املأ العدد والأبعاد والوزن في كل سطر");
+    if (!kind) return setError("اختار طريقة الشحن");
+    const fd = new FormData();
+    fd.set("token", token); fd.set("category", category); fd.set("kind", kind);
+    if (kind === "fcl") {
+      const picked = Object.entries(counts).filter(([, c]) => c > 0).map(([key, count]) => ({ key, count }));
+      if (!picked.length) return setError("اختار نوع الحاوية وعددها");
+      fd.set("containers", JSON.stringify(picked));
+    } else {
+      const cartons = rows
+        .filter((r) => Object.values(r).some((v) => v.trim()))
+        .map((r) => ({ qty: n(r.qty), l: n(r.l), w: n(r.w), h: n(r.h), kg: n(r.kg) }));
+      if (!cartons.length) return setError("أدخل بيانات الكراتين");
+      if (cartons.some((c) => Object.values(c).some((v) => !(v > 0)))) return setError("املأ العدد والأبعاد والوزن في كل سطر");
+      fd.set("cartons", JSON.stringify(cartons));
+    }
 
     setBusy(true);
     try {
-      const fd = new FormData();
-      fd.set("token", token); fd.set("category", category); fd.set("mode", mode); fd.set("cartons", JSON.stringify(cartons));
       if (photo) fd.set("photo", await resizeImage(photo), "photo.jpg");
       const res = await fetch("/api/quote", { method: "POST", body: fd });
       const json = await res.json().catch(() => ({}));
@@ -101,22 +118,32 @@ export default function QuoteForm({ token, categories, samples, divisor }: { tok
         <div className="rounded-2xl bg-[#0B1B3A] p-5 text-center text-white">
           <p className="text-sm text-white/70">الإجمالي شامل الضريبة</p>
           <p className="mt-1 text-4xl font-extrabold text-[#E9C77B]">{sar(b.total)} <span className="text-lg">ريال</span></p>
-          <p className="mt-2 text-sm text-white/70">{result.category} · {b.mode === "sea" ? "بحري 🚢" : "جوي ✈️"}</p>
+          <p className="mt-2 text-sm text-white/70">{result.category} · {KIND_LABEL[b.kind]}</p>
         </div>
 
         <dl className="divide-y divide-slate-100 rounded-xl border border-slate-200 text-sm">
-          <Line k="عدد الكراتين" v={String(b.cartons_count)} />
-          <Line k="الحجم" v={`${b.cbm.toFixed(3)} CBM`} />
-          <Line k="الوزن الفعلي" v={`${b.actual_kg} كجم`} />
-          {b.mode === "air" && <Line k="الوزن المحتسب" v={`${b.chargeable} كجم`} hint="الأكبر بين الفعلي والحجمي" />}
-          <Line k={b.min_charge_applied ? "سعر الشحن (الحد الأدنى)" : `سعر الشحن (${b.chargeable} × ${sar(b.rate.unit_price)})`} v={`${sar(b.freight)} ريال`} />
+          {b.kind === "fcl" ? (
+            b.containers.map((c) => <Line key={c.key} k={`${c.name_ar} (${c.count} × ${sar(c.price)})`} v={`${sar(c.value)} ريال`} />)
+          ) : (
+            <>
+              <Line k="عدد الكراتين" v={String(b.cartons_count)} />
+              <Line k="الحجم" v={`${b.cbm.toFixed(3)} CBM`} />
+              <Line k="الوزن الفعلي" v={`${b.actual_kg} كجم`} />
+              {b.kind === "air" && <Line k="الوزن المحتسب" v={`${b.measured} كجم`} hint="الأكبر بين الفعلي والحجمي" />}
+              {b.min_qty_applied && <Line k="الحد الأدنى للشحن" v={b.unit === "CBM" ? `${b.min_qty} CBM` : `${b.min_qty} كجم`} hint="الكمية أقل من الحد الأدنى" />}
+              <Line
+                k={b.min_charge_applied ? "سعر الشحن (الحد الأدنى)" : `سعر الشحن (${b.unit === "CBM" ? b.chargeable.toFixed(3) : b.chargeable} × ${sar(b.rate?.unit_price ?? 0)})`}
+                v={`${sar(b.freight)} ريال`}
+              />
+            </>
+          )}
           {b.surcharges.map((s) => <Line key={s.id} k={`${s.name_ar}${s.kind === "percent" ? ` (${s.amount}%)` : ""}`} v={`${sar(s.value)} ريال`} />)}
           <Line k="الإجمالي قبل الضريبة" v={`${sar(b.subtotal)} ريال`} />
           <Line k={`ضريبة القيمة المضافة ${b.vat_rate}%`} v={`${sar(b.vat_amount)} ريال`} />
         </dl>
 
         <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm leading-7 text-amber-900">
-          ⚠️ السعر مبدئي، والنهائي حسب الوزن والحجم الفعلي في مستودعنا.<br />
+          {b.kind === "fcl" ? "⚠️ السعر مبدئي، ويتم تأكيده مع فريقنا قبل الدفع." : "⚠️ السعر مبدئي، والنهائي حسب الوزن والحجم الفعلي في مستودعنا."}<br />
           صالح حتى: {new Date(result.quote.valid_until).toLocaleDateString("en-GB")}
         </p>
         <p className="text-center text-sm text-slate-500">📩 اتبعتلك نسخة من التسعيرة على الواتساب</p>
@@ -152,7 +179,7 @@ export default function QuoteForm({ token, categories, samples, divisor }: { tok
       <Section n={1} title="نوع البضاعة">
         <div className="grid grid-cols-2 gap-3">
           {categories.map((c) => (
-            <button type="button" key={c.key} onClick={() => { setCategory(c.key); if (mode && !c.modes.includes(mode)) setMode(""); }}
+            <button type="button" key={c.key} onClick={() => { setCategory(c.key); if (kind && !c.kinds.includes(kind)) setKind(""); }}
               className={`rounded-xl border-2 px-3 py-3 text-right transition ${category === c.key ? "border-[#D4AF5A] bg-[#FBF6EA]" : "border-slate-200"}`}>
               <span className="block font-bold text-[#0B1B3A]">{c.name_ar}</span>
               {c.hint_ar && <span className="mt-0.5 block text-xs leading-5 text-slate-500">{c.hint_ar}</span>}
@@ -162,20 +189,49 @@ export default function QuoteForm({ token, categories, samples, divisor }: { tok
       </Section>
 
       <Section n={2} title="طريقة الشحن">
-        <div className="grid grid-cols-2 gap-3">
-          {([["sea", "بحري 🚢", "بالمتر المكعب (CBM)"], ["air", "جوي ✈️", "بالكيلو (الفعلي أو الحجمي)"]] as const).map(([m, label, sub]) => {
-            const disabled = !!cat && !cat.modes.includes(m);
+        <div className="grid gap-3">
+          {KINDS.map(({ kind: k, label, sub }) => {
+            const disabled = !!cat && !cat.kinds.includes(k);
             return (
-              <button type="button" key={m} disabled={disabled} onClick={() => setMode(m)}
-                className={`rounded-xl border-2 px-3 py-3 transition disabled:opacity-40 ${mode === m ? "border-[#D4AF5A] bg-[#FBF6EA]" : "border-slate-200"}`}>
-                <span className="block font-bold text-[#0B1B3A]">{label}</span>
-                <span className="block text-xs text-slate-500">{disabled ? "غير متاح لهذا النوع" : sub}</span>
+              <button type="button" key={k} disabled={disabled} onClick={() => setKind(k)}
+                className={`flex items-center justify-between rounded-xl border-2 px-4 py-3 text-right transition disabled:opacity-40 ${kind === k ? "border-[#D4AF5A] bg-[#FBF6EA]" : "border-slate-200"}`}>
+                <span className="font-bold text-[#0B1B3A]">{label}</span>
+                <span className="text-xs text-slate-500">{disabled ? "غير متاح لهذا النوع" : sub}</span>
               </button>
             );
           })}
         </div>
       </Section>
 
+      {kind === "fcl" && (
+        <Section n={3} title="الحاويات" hint="اختار نوع الحاوية والعدد">
+          <div className="space-y-3">
+            {containers.map((c) => {
+              const count = counts[c.key] ?? 0;
+              const set = (v: number) => setCounts((p) => ({ ...p, [c.key]: Math.max(0, Math.min(50, v)) }));
+              return (
+                <div key={c.key} className={`flex items-center justify-between rounded-xl border-2 px-4 py-3 ${count > 0 ? "border-[#D4AF5A] bg-[#FBF6EA]" : "border-slate-200"} ${c.price === null ? "opacity-50" : ""}`}>
+                  <div>
+                    <p className="font-bold text-[#0B1B3A]">{c.name_ar}</p>
+                    <p className="text-xs text-slate-500">
+                      {c.price === null ? "السعر عند الطلب" : `${sar(c.price)} ريال / حاوية`}{c.hint_ar ? ` · ${c.hint_ar}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2" dir="ltr">
+                    <button type="button" disabled={c.price === null || count === 0} onClick={() => set(count - 1)}
+                      className="h-9 w-9 rounded-full border border-slate-300 text-lg font-bold disabled:opacity-30">−</button>
+                    <span className="w-6 text-center font-bold">{count}</span>
+                    <button type="button" disabled={c.price === null} onClick={() => set(count + 1)}
+                      className="h-9 w-9 rounded-full bg-[#0B1B3A] text-lg font-bold text-[#E9C77B] disabled:opacity-30">+</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {kind !== "fcl" && (
       <Section n={3} title="الكراتين" hint="من قائمة التعبئة اللي عندك من المصنع. لو في أكثر من مقاس أضف سطر لكل مقاس.">
         <div className="space-y-3">
           {rows.map((r, i) => (
@@ -208,7 +264,15 @@ export default function QuoteForm({ token, categories, samples, divisor }: { tok
             <div><p className="text-slate-500">الوزن</p><p className="font-bold">{Math.round(totals.kg * 100) / 100} كجم</p></div>
           </div>
         )}
+        {totals.count > 0 && kind === "lcl" && totals.cbm < 1 && (
+          <p className="text-xs text-amber-700">الحجم أقل من 1 CBM، وهيتحسب على 1 CBM (الحد الأدنى للبحري المجمّع)</p>
+        )}
+        {totals.count > 0 && kind === "air" && Math.max(totals.kg, totals.vol) < 20 && (
+          <p className="text-xs text-amber-700">الوزن أقل من 20 كجم، وهيتحسب على 20 كجم (الحد الأدنى للجوي)</p>
+        )}
       </Section>
+
+      )}
 
       <Section n={4} title="صورة المنتج" hint="اختياري — بتساعدنا نتأكد من نوع البضاعة">
         <label className="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-dashed border-slate-300 px-4 py-4">

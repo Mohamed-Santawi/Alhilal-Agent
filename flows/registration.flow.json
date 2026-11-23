@@ -68,6 +68,15 @@
             "helper-text": "للشركات فقط"
           },
           {
+            "type": "TextInput",
+            "name": "vat_number",
+            "label": "الرقم الضريبي",
+            "input-type": "text",
+            "required": false,
+            "max-chars": 15,
+            "helper-text": "اختياري — 15 رقم يبدأ وينتهي بـ 3"
+          },
+          {
             "type": "Footer",
             "label": "التالي",
             "on-click-action": {
@@ -82,7 +91,8 @@
                 "alt_phone": "${form.alt_phone}",
                 "customer_type": "${form.customer_type}",
                 "company_name": "${form.company_name}",
-                "cr_number": "${form.cr_number}"
+                "cr_number": "${form.cr_number}",
+                "vat_number": "${form.vat_number}"
               }
             }
           }
@@ -114,6 +124,10 @@
           "__example__": ""
         },
         "cr_number": {
+          "type": "string",
+          "__example__": ""
+        },
+        "vat_number": {
           "type": "string",
           "__example__": ""
         }
@@ -270,7 +284,8 @@
                 "unit_no": "${form.unit_no}",
                 "short_address": "${form.short_address}",
                 "postal_code": "${form.postal_code}",
-                "additional_no": "${form.additional_no}"
+                "additional_no": "${form.additional_no}",
+                "vat_number": "${data.vat_number}"
               }
             }
           }
@@ -341,6 +356,10 @@
         "additional_no": {
           "type": "string",
           "__example__": ""
+        },
+        "vat_number": {
+          "type": "string",
+          "__example__": ""
         }
       },
       "layout": {
@@ -397,7 +416,8 @@
                 "additional_no": "${data.additional_no}",
                 "recipient_name": "${form.recipient_name}",
                 "recipient_phone": "${form.recipient_phone}",
-                "privacy_consent": "${form.privacy_consent}"
+                "privacy_consent": "${form.privacy_consent}",
+                "vat_number": "${data.vat_number}"
               }
             }
           }
