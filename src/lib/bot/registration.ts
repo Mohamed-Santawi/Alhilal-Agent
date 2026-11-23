@@ -1,15 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { env } from "../env";
+import { env, privacyUrl } from "../env";
 import { db } from "../supabase";
 import { wa } from "../whatsapp/send";
 import { audit, logOutbound, setState, type Conversation, type Customer } from "./repo";
 
-const REGIONS: Record<string, string> = {
-  riyadh: "الرياض", makkah: "مكة المكرمة", madinah: "المدينة المنورة", eastern: "المنطقة الشرقية",
-  qassim: "القصيم", asir: "عسير", tabuk: "تبوك", hail: "حائل", northern_borders: "الحدود الشمالية",
-  jazan: "جازان", najran: "نجران", baha: "الباحة", jouf: "الجوف",
-};
+import { REGIONS } from "../forms/regions";
 
 // Flow returns "" (or the literal "${form.x}" on some clients) for empty optional fields → normalize to undefined
 const opt = z.preprocess(
@@ -72,7 +68,7 @@ export async function sendRegistrationFlow(customer: Customer, conv: Conversatio
   const e = env();
   const r = await wa.flow(customer.wa_id, {
     header: "تسجيل عميل جديد",
-    body: e.PRIVACY_POLICY_URL ? `${intro}\n\n🔒 سياسة الخصوصية:\n${e.PRIVACY_POLICY_URL}` : intro,
+    body: privacyUrl() ? `${intro}\n\n🔒 سياسة الخصوصية:\n${privacyUrl()}` : intro,
     footer: "بياناتك محمية ولن تُشارك إلا لتنفيذ طلباتك",
     cta: "ابدأ التسجيل",
     flowId: e.WHATSAPP_REGISTRATION_FLOW_ID!,

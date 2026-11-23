@@ -1,9 +1,10 @@
-import { env } from "../env";
+import { env, privacyUrl } from "../env";
 import { wa, WaApiError } from "../whatsapp/send";
 import type { Inbound } from "../whatsapp/types";
 import { logOutbound, setState, type Conversation, type Customer } from "./repo";
 import { CoreRegistrationSchema, persistRegistration, sendRegistrationFlow, registrationSummary, type RegistrationData } from "./registration";
 import { sendMainMenu } from "./menu";
+import { sendRegistrationLink } from "./registration-web";
 
 /**
  * Conversational registration — asks one question at a time.
@@ -82,7 +83,7 @@ const STEPS: Step[] = [
   {
     key: "privacy_consent",
     ask: () => {
-      const url = env().PRIVACY_POLICY_URL;
+      const url = privacyUrl();
       return `آخر خطوة ✅\nهل توافق على سياسة الخصوصية وجمع بياناتك لتقديم الخدمة؟${url ? `\n\n🔒 ${url}` : ""}`;
     },
     buttons: [{ id: "reg:agree", title: "أوافق" }],
@@ -105,17 +106,32 @@ export async function startChatRegistration(customer: Customer, conv: Conversati
   await ask(customer, conv, STEPS[0], {}, `${intro}\n\n(تقدر تكتب *إلغاء* في أي وقت عشان تبدأ من الأول)`);
 }
 
-/** Entry point for unregistered customers: Flow first (unless disabled), chat as fallback. */
+/**
+ * Entry point for unregistered customers.
+ * auto: WhatsApp Flow → web form link → chat. Each step falls back to the next if unavailable.
+ */
 export async function startRegistration(customer: Customer, conv: Conversation, intro: string) {
-  const e = env();
-  if (e.REGISTRATION_MODE !== "chat" && e.WHATSAPP_REGISTRATION_FLOW_ID) {
+  const mode = env().REGISTRATION_MODE;
+
+  if ((mode === "auto" || mode === "flow") && env().WHATSAPP_REGISTRATION_FLOW_ID) {
     try {
       return await sendRegistrationFlow(customer, conv, intro);
     } catch (err) {
-      if (e.REGISTRATION_MODE === "flow") throw err;
-      console.warn("[registration] Flow unavailable, falling back to chat:", err instanceof WaApiError ? err.code : err);
+      if (mode === "flow") throw err;
+      console.warn("[registration] Flow unavailable, trying web form:", err instanceof WaApiError ? err.code : String(err));
     }
   }
+
+  if (mode === "auto" || mode === "web") {
+    try {
+      if (await sendRegistrationLink(customer, conv, intro)) return;
+      console.warn("[registration] PUBLIC_BASE_URL unknown, falling back to chat");
+    } catch (err) {
+      if (mode === "web") throw err;
+      console.warn("[registration] web form unavailable, falling back to chat:", String(err));
+    }
+  }
+
   return startChatRegistration(customer, conv, intro);
 }
 

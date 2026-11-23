@@ -12,13 +12,29 @@ const schema = z.object({
 
   // WhatsApp Flows
   WHATSAPP_REGISTRATION_FLOW_ID: z.string().optional(),
-  // auto = try the Flow, fall back to chat if Meta refuses it (e.g. unverified account); flow / chat = force one
-  REGISTRATION_MODE: z.enum(["auto", "flow", "chat"]).default("auto"),
+  // auto = Flow → web form → chat (each one falls back to the next); or force one of them
+  REGISTRATION_MODE: z.enum(["auto", "flow", "web", "chat"]).default("auto"),
+  // Public URL of this app, used in links sent on WhatsApp. On Vercel it is detected automatically.
+  PUBLIC_BASE_URL: z.string().url().optional(),
+  VERCEL_PROJECT_PRODUCTION_URL: z.string().optional(),
   WHATSAPP_FLOW_MODE: z.enum(["draft", "published"]).default("draft"), // draft = test before publishing the flow
   PRIVACY_POLICY_URL: z.string().url().optional(),
 });
 
 let cached: z.infer<typeof schema> | null = null;
+
+/** https://your-app.vercel.app (no trailing slash), or undefined if unknown. */
+export function publicBaseUrl(): string | undefined {
+  const e = env();
+  const url = e.PUBLIC_BASE_URL ?? (e.VERCEL_PROJECT_PRODUCTION_URL ? `https://${e.VERCEL_PROJECT_PRODUCTION_URL}` : undefined);
+  return url?.replace(/\/+$/, "");
+}
+
+/** PRIVACY_POLICY_URL if set, otherwise this app's /privacy page. */
+export function privacyUrl(): string | undefined {
+  const base = publicBaseUrl();
+  return env().PRIVACY_POLICY_URL ?? (base ? `${base}/privacy` : undefined);
+}
 
 export function env() {
   if (!cached) cached = schema.parse(process.env);
