@@ -2,7 +2,8 @@ import type { Inbound } from "../whatsapp/types";
 import { wa } from "../whatsapp/send";
 import { getOrCreateConversation, getOrCreateCustomer, logInbound, logOutbound } from "./repo";
 import { GROUPS, MENU_IDS, sendGroupMenu, sendMainMenu, type GroupKey } from "./menu";
-import { registrationSummary, saveRegistration, sendRegistrationFlow } from "./registration";
+import { registrationSummary, saveRegistration } from "./registration";
+import { handleChatRegistration, startRegistration } from "./registration-chat";
 
 /**
  * Step 2 handler: identify → dedupe → registration gate (WhatsApp Flow) → menu.
@@ -35,16 +36,17 @@ export async function handleIncoming(msg: Inbound) {
     if (res.reason === "invalid") {
       await reply(`⚠️ في بيانات ناقصة أو غير صحيحة:\n• ${res.missing?.join("\n• ")}\n\nممكن تعبي النموذج مرة ثانية؟`);
     }
-    return sendRegistrationFlow(customer, conv, "افتح النموذج وكمّل بياناتك 👇");
+    return startRegistration(customer, conv, "افتح النموذج وكمّل بياناتك 👇");
   }
 
-  // --- 2. Not registered yet → registration form (human handoff still allowed) ---
+  // --- 2. Not registered yet → registration (Flow, or chat fallback). Human handoff still allowed ---
   if (!customer.registration_complete) {
     if (msg.replyId === MENU_IDS.human) return reply("تم تحويل طلبك لموظف خدمة العملاء، وهيتواصل معاك قريب.");
+    if (await handleChatRegistration(customer, conv, msg)) return;
     const intro = isNew
       ? "أهلاً بيك في *هلال الشرق للتجارة* 🌙\nمنصة الخدمات التجارية المتكاملة للاستيراد من الصين.\n\nقبل ما نبدأ، محتاجين نسجل بياناتك مرة واحدة بس (أقل من دقيقتين)."
       : "لسه فاضل نكمّل تسجيل بياناتك عشان نقدر نخدمك 👇";
-    return sendRegistrationFlow(customer, conv, intro);
+    return startRegistration(customer, conv, intro);
   }
 
   // --- 3. Menu navigation by interactive ids ---

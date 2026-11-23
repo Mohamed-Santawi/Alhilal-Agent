@@ -4,6 +4,13 @@ type ListRow = { id: string; title: string; description?: string };   // title â
 type ListSection = { title: string; rows: ListRow[] };                // max 10 rows TOTAL across sections
 type Button = { id: string; title: string };                          // max 3 buttons, title â‰¤ 20 chars
 
+/** Carries Meta's numeric error code (e.g. 131030 not in allowed list, 139000 blocked by integrity). */
+export class WaApiError extends Error {
+  constructor(public status: number, public code: number | undefined, public body: unknown) {
+    super(`WhatsApp API ${status}: ${JSON.stringify(body)}`);
+  }
+}
+
 async function callApi(payload: Record<string, unknown>) {
   const e = env();
   const res = await fetch(
@@ -15,7 +22,7 @@ async function callApi(payload: Record<string, unknown>) {
     },
   );
   const json = await res.json();
-  if (!res.ok) throw new Error(`WhatsApp API ${res.status}: ${JSON.stringify(json)}`);
+  if (!res.ok) throw new WaApiError(res.status, json?.error?.code, json);
   return json as { messages: Array<{ id: string }> };
 }
 
