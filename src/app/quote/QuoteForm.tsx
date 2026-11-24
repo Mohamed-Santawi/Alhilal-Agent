@@ -210,7 +210,7 @@ export default function QuoteForm(props: {
         </div>
 
         <dl className="divide-y divide-slate-100 rounded-xl border border-slate-200 text-sm">
-          {b.items.map((i, k) => <Line key={k} k={`${i.product} (${i.category_ar})`} v={`${i.cartons_count} كرتون`} />)}
+          {b.items.map((i, k) => <Line key={k} k={`${i.product} (${i.category_ar})`} v={`الكراتين: ${i.cartons_count}`} />)}
           <Line k="الحجم" v={`${b.cbm.toFixed(3)} CBM`} />
           <Line k="الوزن الفعلي" v={`${b.actual_kg} كجم`} />
           {b.kind === "air" && <Line k="الوزن الحجمي" v={`${b.volumetric_kg} كجم`} hint={`الطول × العرض × الارتفاع ÷ ${divisor}`} />}
@@ -222,7 +222,7 @@ export default function QuoteForm(props: {
             v={`${sar(b.freight)} ريال`}
           />
           {b.surcharges.map((s) => <Line key={s.id} k={`${s.name_ar}${s.kind === "percent" ? ` (${s.amount}%)` : ""}`} v={`${sar(s.value)} ريال`} />)}
-          {b.remote.value > 0 && <Line k="التوصيل للمناطق النائية" hint={`${b.cartons_count} كرتون × ${sar(b.remote.fee_per_carton!)}`} v={`${sar(b.remote.value)} ريال`} />}
+          {b.remote.value > 0 && <Line k="التوصيل للمناطق النائية" hint={`${b.cartons_count} × ${sar(b.remote.fee_per_carton!)} ريال لكل كرتونة`} v={`${sar(b.remote.value)} ريال`} />}
           <Line k="الإجمالي قبل الضريبة" v={`${sar(b.subtotal)} ريال`} />
           <Line k={`ضريبة القيمة المضافة ${b.vat_rate}%`} v={`${sar(b.vat_amount)} ريال`} />
         </dl>
@@ -416,7 +416,7 @@ export default function QuoteForm(props: {
                 )}
                 {kind !== "fcl" && remote && (
                   <p className="mt-2 text-xs leading-5 text-amber-700">
-                    هذه المدينة خارج المناطق الرئيسية، وتُضاف رسوم توصيل محلي {remoteFee ? `${sar(remoteFee)} ريال لكل كرتون` : "يحددها فريقنا"}.
+                    هذه المدينة خارج المناطق الرئيسية، وتُضاف رسوم توصيل محلي {remoteFee ? `${sar(remoteFee)} ريال لكل كرتونة` : "يحددها فريقنا"}.
                   </p>
                 )}
               </>
@@ -465,7 +465,7 @@ export default function QuoteForm(props: {
           <dl className="divide-y divide-slate-100 rounded-xl border border-slate-200 text-sm">
             <Line k="طريقة الشحن" v={kind === "fcl" ? `${containers.find((c) => c.key === container)?.name_ar} × ${count}` : KIND_LABEL[kind as Kind]} />
             {items.map((it, i) => (
-              <Line key={it.id} k={`${i + 1}. ${it.product}`} hint={catName(it.category)} v={`${measure(it.rows, divisor).count} كرتون · ${it.photos.length} صور`} />
+              <Line key={it.id} k={`${i + 1}. ${it.product}`} hint={catName(it.category)} v={`الكراتين: ${measure(it.rows, divisor).count} · الصور: ${it.photos.length}`} />
             ))}
             <Line k="الحجم / الوزن" v={`${totals.cbm.toFixed(3)} CBM · ${totals.kg} كجم`} />
             {kind === "fcl" && <Line k="ميناء الوصول" v={PORTS.find((p) => p.key === port)?.name_ar ?? ""} />}

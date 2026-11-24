@@ -187,7 +187,7 @@ export function quoteMessage(q: { code: string; valid_until: string; b: QuoteBre
   const { b } = q;
   const products = b.items.length === 1
     ? [`المنتج: ${b.items[0].product} (${b.items[0].category_ar})`]
-    : [`المنتجات:`, ...b.items.map((i) => `• ${i.product} (${i.category_ar}) — ${i.cartons_count} كرتون`)];
+    : [`المنتجات:`, ...b.items.map((i) => `• ${i.product} (${i.category_ar}) — عدد الكراتين: ${i.cartons_count}`)];
   const freightLine = b.min_charge_applied
     ? `سعر الشحن (الحد الأدنى): ${sar(b.freight)} ريال`
     : b.pricing === "per_item"
@@ -207,7 +207,7 @@ export function quoteMessage(q: { code: string; valid_until: string; b: QuoteBre
     ``,
     freightLine,
     ...b.surcharges.map((s) => `+ ${s.name_ar}${s.kind === "percent" ? ` (${s.amount}%)` : ""}: ${sar(s.value)} ريال`),
-    ...(b.remote.value ? [`+ التوصيل للمناطق النائية: ${b.cartons_count} كرتون × ${sar(b.remote.fee_per_carton!)} = ${sar(b.remote.value)} ريال`] : []),
+    ...(b.remote.value ? [`+ التوصيل للمناطق النائية: ${b.cartons_count} × ${sar(b.remote.fee_per_carton!)} ريال لكل كرتونة = ${sar(b.remote.value)} ريال`] : []),
     `الإجمالي قبل الضريبة: ${sar(b.subtotal)} ريال`,
     `ضريبة القيمة المضافة ${b.vat_rate}%: ${sar(b.vat_amount)} ريال`,
     `*الإجمالي: ${sar(b.total)} ريال*`,
