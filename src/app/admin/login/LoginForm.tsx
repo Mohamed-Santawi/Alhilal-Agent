@@ -13,13 +13,13 @@ export default function LoginForm() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (!email.trim() || !password) return setError("اكتب الإيميل وكلمة المرور");
+    if (!email.trim() || !password) return setError("يرجى كتابة البريد الإلكتروني وكلمة المرور");
     setBusy(true);
     const supa = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!);
     const { error } = await supa.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
     if (error) {
       setBusy(false);
-      return setError(error.message.includes("Invalid") ? "الإيميل أو كلمة المرور غير صحيحة" : "حصلت مشكلة، حاول مرة ثانية");
+      return setError(error.message.includes("Invalid") ? "البريد الإلكتروني أو كلمة المرور غير صحيحة" : "حدثت مشكلة، يرجى المحاولة مرة أخرى");
     }
     window.location.href = "/admin/pricing";
   }
@@ -28,7 +28,7 @@ export default function LoginForm() {
   return (
     <form onSubmit={submit} className="space-y-4" noValidate>
       <label className="block">
-        <span className="mb-1.5 block text-sm font-medium text-slate-700">الإيميل</span>
+        <span className="mb-1.5 block text-sm font-medium text-slate-700">البريد الإلكتروني</span>
         <input type="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" className={`${input} text-left`} />
       </label>
       <label className="block">

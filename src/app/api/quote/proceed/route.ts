@@ -7,7 +7,7 @@ import { getQuote } from "@/lib/shipping/repo";
 
 export const runtime = "nodejs";
 
-/** "كمّل الطلب" from the calculator page. Registered → accept now; otherwise → registration form, then auto-accept. */
+/** "إكمال الطلب" from the calculator page. Registered → accept now; otherwise → registration form, then auto-accept. */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const tok = await peekFormToken(String(body.token ?? ""), "quote");

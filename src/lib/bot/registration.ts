@@ -39,7 +39,7 @@ const coreFields = {
 
 const companyRule = (d: { customer_type: string; company_name?: string; cr_number?: string; vat_number?: string }, ctx: z.RefinementCtx) => {
   if (d.vat_number && !/^3\d{13}3$/.test(d.vat_number))
-    ctx.addIssue({ code: "custom", path: ["vat_number"], message: "الرقم الضريبي 15 رقم يبدأ وينتهي بـ 3" });
+    ctx.addIssue({ code: "custom", path: ["vat_number"], message: "الرقم الضريبي مكوّن من 15 رقماً ويبدأ وينتهي بالرقم 3" });
     if (d.customer_type === "company" && !d.company_name)
       ctx.addIssue({ code: "custom", path: ["company_name"], message: "اسم المنشأة مطلوب للشركات" });
     if (d.customer_type === "company" && !d.cr_number)
@@ -60,7 +60,7 @@ export function normalizeRegion(input: string): string {
 
 const FIELD_AR: Record<string, string> = {
   full_name: "الاسم", email: "البريد الإلكتروني", customer_type: "نوع العميل", company_name: "اسم المنشأة",
-  cr_number: "رقم السجل التجاري", vat_number: "الرقم الضريبي (15 رقم يبدأ وينتهي بـ 3)", region: "المنطقة", city: "المدينة", district: "الحي", street: "الشارع",
+  cr_number: "رقم السجل التجاري", vat_number: "الرقم الضريبي (15 رقماً يبدأ وينتهي بالرقم 3)", region: "المنطقة", city: "المدينة", district: "الحي", street: "الشارع",
   building_no: "رقم المبنى (4 أرقام)", postal_code: "الرمز البريدي (5 أرقام)", privacy_consent: "الموافقة على سياسة الخصوصية",
 };
 
@@ -152,6 +152,6 @@ export function registrationSummary(c: Customer & Record<string, unknown>) {
     `✅ تم تسجيلك بنجاح يا ${c.full_name}`,
     ``,
     `رقم العميل: *${c.code}*`,
-    `احتفظ بالرقم ده، هتحتاجه في أي تواصل معانا.`,
+    `يرجى الاحتفاظ بهذا الرقم لاستخدامه في أي تواصل معنا.`,
   ].join("\n");
 }

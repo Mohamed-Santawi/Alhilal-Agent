@@ -24,50 +24,77 @@ const fail = (msg: string): ActionResult => ({ ok: false, msg });
 
 async function run(fn: () => Promise<ActionResult>): Promise<ActionResult> {
   try { return await fn(); }
-  catch (e) { console.error("[admin]", e); return fail(e instanceof Error && e.message.startsWith("غير مصرح") ? e.message : "حصلت مشكلة أثناء الحفظ"); }
+  catch (e) { console.error("[admin]", e); return fail(e instanceof Error && e.message.startsWith("غير مصرح") ? e.message : "حدثت مشكلة أثناء الحفظ"); }
 }
 
-// ---------------------------------------------------------------- shipping rates (air / LCL)
-export async function updateShippingRate(_: ActionResult, fd: FormData): Promise<ActionResult> {
+// ---------------------------------------------------------------- shipping rates (air / LCL) — one table
+/**
+ * Saves the whole rates table at once. Fields:
+ *   min_qty_air, min_qty_sea                      (global minimums, applied to every category)
+ *   name_<key>, hint_<key>, active_<key>          (category info)
+ *   price_<key>_air, price_<key>_sea              (empty = this mode is not offered for this category)
+ * Only changed prices create a new version; old prices are closed, never deleted.
+ */
+export async function saveRatesTable(_: ActionResult, fd: FormData): Promise<ActionResult> {
   return run(async () => {
     const me = await guard();
-    const p = z.object({
-      category_key: z.string().min(1), mode: z.enum(["sea", "air"]),
-      unit_price: money, min_qty: money, min_charge: money,
-    }).safeParse(Object.fromEntries(fd));
-    if (!p.success) return fail("أرقام غير صحيحة");
-    const d = p.data;
-    if (d.unit_price <= 0) return fail("السعر لازم يكون أكبر من صفر");
-
-    const cur = await db().from("shipping_rates").select("*")
-      .eq("category_key", d.category_key).eq("mode", d.mode).lte("effective_from", now())
-      .or(`effective_to.is.null,effective_to.gt.${now()}`).order("effective_from", { ascending: false }).limit(1).maybeSingle();
-    if (cur.data && Number(cur.data.unit_price) === d.unit_price && Number(cur.data.min_qty) === d.min_qty && Number(cur.data.min_charge) === d.min_charge)
-      return fail("مفيش تغيير");
+    const get = (k: string) => String(fd.get(k) ?? "").trim();
+    const minQ = { air: money.safeParse(get("min_qty_air")), sea: money.safeParse(get("min_qty_sea")) };
+    if (!minQ.air.success || !minQ.sea.success) return fail("الحد الأدنى غير صحيح");
+    const minQty = { air: minQ.air.data, sea: minQ.sea.data };
 
     const t = now();
-    if (cur.data) await db().from("shipping_rates").update({ effective_to: t }).eq("id", cur.data.id);
-    const ins = await db().from("shipping_rates").insert({ ...d, effective_from: t, created_by: me.id }).select("id").single();
-    if (ins.error) throw ins.error;
-    await audit(me.id, "rate.changed", "shipping_rates", ins.data.id, {
-      category: d.category_key, mode: d.mode,
-      before: cur.data ? { unit_price: cur.data.unit_price, min_qty: cur.data.min_qty, min_charge: cur.data.min_charge } : null,
-      after: { unit_price: d.unit_price, min_qty: d.min_qty, min_charge: d.min_charge },
-    });
-    return done("تم حفظ السعر ✓");
-  });
-}
+    const [cats, rates] = await Promise.all([
+      db().from("shipping_categories").select("*"),
+      db().from("shipping_rates").select("*").lte("effective_from", t).or(`effective_to.is.null,effective_to.gt.${t}`),
+    ]);
+    if (cats.error) throw cats.error;
+    if (rates.error) throw rates.error;
 
-/** Stop offering a mode for a category (closes the current price). */
-export async function disableShippingRate(_: ActionResult, fd: FormData): Promise<ActionResult> {
-  return run(async () => {
-    const me = await guard();
-    const category_key = String(fd.get("category_key")), mode = String(fd.get("mode"));
-    const r = await db().from("shipping_rates").update({ effective_to: now() })
-      .eq("category_key", category_key).eq("mode", mode).or(`effective_to.is.null,effective_to.gt.${now()}`).select("id");
-    if (r.error) throw r.error;
-    await audit(me.id, "rate.disabled", "shipping_rates", `${category_key}:${mode}`, { category: category_key, mode });
-    return done("تم الإيقاف ✓");
+    let changes = 0;
+    for (const c of cats.data) {
+      if (fd.get(`name_${c.key}`) === null) continue; // row not in the form
+
+      // 1. category info
+      const name_ar = get(`name_${c.key}`), hint_ar = get(`hint_${c.key}`) || null, active = fd.get(`active_${c.key}`) === "on";
+      if (name_ar.length < 2) return fail("يوجد نوع بضاعة بدون اسم");
+      if (name_ar !== c.name_ar || hint_ar !== c.hint_ar || active !== c.active) {
+        await db().from("shipping_categories").update({ name_ar, hint_ar, active }).eq("key", c.key);
+        await audit(me.id, "category.updated", "shipping_categories", c.key, { name_ar, hint_ar, active });
+        changes++;
+      }
+
+      // 2. prices
+      for (const mode of ["air", "sea"] as const) {
+        const raw = get(`price_${c.key}_${mode}`);
+        const cur = rates.data.find((r) => r.category_key === c.key && r.mode === mode);
+        if (!raw) {
+          if (cur) {
+            await db().from("shipping_rates").update({ effective_to: t }).eq("id", cur.id);
+            await audit(me.id, "rate.disabled", "shipping_rates", `${c.key}:${mode}`, { category: name_ar, mode });
+            changes++;
+          }
+          continue;
+        }
+        const price = money.safeParse(raw);
+        if (!price.success || price.data <= 0) return fail(`سعر غير صحيح: ${name_ar}`);
+        if (cur && Number(cur.unit_price) === price.data && Number(cur.min_qty) === minQty[mode]) continue;
+
+        if (cur) await db().from("shipping_rates").update({ effective_to: t }).eq("id", cur.id);
+        const ins = await db().from("shipping_rates").insert({
+          category_key: c.key, mode, unit_price: price.data, min_qty: minQty[mode],
+          min_charge: cur ? Number(cur.min_charge) : 0, effective_from: t, created_by: me.id,
+        }).select("id").single();
+        if (ins.error) throw ins.error;
+        await audit(me.id, "rate.changed", "shipping_rates", ins.data.id, {
+          category: name_ar, mode,
+          before: cur ? { unit_price: cur.unit_price, min_qty: cur.min_qty } : null,
+          after: { unit_price: price.data, min_qty: minQty[mode] },
+        });
+        changes++;
+      }
+    }
+    return changes ? done(`تم حفظ ${changes} تغيير ✓`) : fail("لا يوجد تغيير");
   });
 }
 
@@ -82,14 +109,14 @@ export async function updateFclPrice(_: ActionResult, fd: FormData): Promise<Act
       .or(`effective_to.is.null,effective_to.gt.${t}`).order("effective_from", { ascending: false }).limit(1).maybeSingle();
 
     if (!raw) { // empty = "price on request"
-      if (!cur.data) return fail("مفيش تغيير");
+      if (!cur.data) return fail("لا يوجد تغيير");
       await db().from("fcl_rates").update({ effective_to: t }).eq("id", cur.data.id);
       await audit(me.id, "fcl.price_removed", "fcl_rates", key, { before: cur.data.price });
-      return done("الحاوية بقت «السعر عند الطلب» ✓");
+      return done("أصبحت الحاوية «السعر عند الطلب» ✓");
     }
     const p = money.safeParse(raw);
     if (!p.success || p.data <= 0) return fail("السعر غير صحيح");
-    if (cur.data && Number(cur.data.price) === p.data) return fail("مفيش تغيير");
+    if (cur.data && Number(cur.data.price) === p.data) return fail("لا يوجد تغيير");
     if (cur.data) await db().from("fcl_rates").update({ effective_to: t }).eq("id", cur.data.id);
     const ins = await db().from("fcl_rates").insert({ container_key: key, price: p.data, effective_from: t, created_by: me.id }).select("id").single();
     if (ins.error) throw ins.error;
@@ -106,7 +133,7 @@ export async function saveCategory(_: ActionResult, fd: FormData): Promise<Actio
     const hint_ar = String(fd.get("hint_ar") ?? "").trim() || null;
     const active = fd.get("active") === "on";
     const key = String(fd.get("key") ?? "");
-    if (name_ar.length < 2) return fail("اكتب اسم النوع");
+    if (name_ar.length < 2) return fail("يرجى كتابة اسم النوع");
     if (key) {
       const r = await db().from("shipping_categories").update({ name_ar, hint_ar, active }).eq("key", key);
       if (r.error) throw r.error;
@@ -118,7 +145,7 @@ export async function saveCategory(_: ActionResult, fd: FormData): Promise<Actio
     const r = await db().from("shipping_categories").insert({ key: newKey, name_ar, hint_ar, active: true, sort_order: (max.data?.sort_order ?? 0) + 1 });
     if (r.error) throw r.error;
     await audit(me.id, "category.created", "shipping_categories", newKey, { name_ar, hint_ar });
-    return done("تمت إضافة النوع ✓ — حط أسعاره تحت");
+    return done("تمت إضافة النوع ✓ — أدخل أسعاره في الجدول");
   });
 }
 
@@ -134,10 +161,10 @@ export async function addSurcharge(_: ActionResult, fd: FormData): Promise<Actio
       starts_at: z.string(),
       ends_at: z.string(),
     }).safeParse(Object.fromEntries(fd));
-    if (!p.success) return fail("راجع البيانات");
+    if (!p.success) return fail("يرجى مراجعة البيانات");
     const d = p.data;
-    if (d.amount <= 0) return fail("القيمة لازم تكون أكبر من صفر");
-    if (d.kind === "percent" && d.amount > 100) return fail("النسبة لازم تكون أقل من 100%");
+    if (d.amount <= 0) return fail("يجب أن تكون القيمة أكبر من صفر");
+    if (d.kind === "percent" && d.amount > 100) return fail("يجب أن تكون النسبة أقل من 100%");
     const row = {
       name_ar: d.name_ar, mode: d.mode || null, kind: d.kind, amount: d.amount,
       starts_at: dateToIso(d.starts_at) ?? now(), ends_at: dateToIso(d.ends_at, true), active: true,
@@ -209,7 +236,7 @@ export async function updateSettings(_: ActionResult, fd: FormData): Promise<Act
       quote_validity_days: money.pipe(z.number().int().min(1).max(90)),
       air_volumetric_divisor: money.pipe(z.number().int().min(1000).max(10000)),
     }).safeParse(Object.fromEntries(fd));
-    if (!p.success) return fail("راجع القيم (الصلاحية من 1 لـ 90 يوم، والمعامل من 1000 لـ 10000)");
+    if (!p.success) return fail("يرجى مراجعة القيم (الصلاحية من 1 إلى 90 يوماً، والمعامل من 1000 إلى 10000)");
     const row = { ...p.data, prices_are_samples: fd.get("prices_are_samples") === "on", updated_at: now() };
     const r = await db().from("shipping_settings").update(row).eq("id", 1);
     if (r.error) throw r.error;

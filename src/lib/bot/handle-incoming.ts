@@ -4,13 +4,15 @@ import { getOrCreateConversation, getOrCreateCustomer, logInbound, logOutbound, 
 import { GROUPS, MENU_IDS, sendGroupMenu, sendMainMenu, type GroupKey } from "./menu";
 import { registrationSummary, saveRegistration } from "./registration";
 import { handleChatRegistration, startRegistration } from "./registration-chat";
-import { onRegistered, proceedWithQuote, QUOTE_IDS, sendQuoteLink } from "./quotes";
+import { onRegistered, proceedWithQuote, QUOTE_IDS, requestService, sendQuoteLink } from "./quotes";
+import { handoffToHuman, isHumanMode } from "./handoff";
+import { agentEnabled, runAgent } from "../ai/agent";
 
 /**
  * Quote first, register later:
  * - Anyone can browse the menu and use the shipping price calculator.
  * - Registration is asked only when the customer proceeds with a quote or starts a service.
- * Step 3 replaces free-text handling with the LLM agent.
+ * - Free text goes to the AI agent (if OPENROUTER_API_KEY is set), otherwise the menu.
  */
 export async function handleIncoming(msg: Inbound) {
   const { customer, isNew } = await getOrCreateCustomer(msg.waId);
@@ -21,7 +23,7 @@ export async function handleIncoming(msg: Inbound) {
 
   wa.markRead(msg.waMessageId).catch(() => {});
 
-  if (conv.mode === "human") return; // a staff member owns this chat; bot stays silent
+  if (await isHumanMode(conv)) return; // a staff member owns this chat; bot stays silent until it expires
 
   const reply = async (text: string) => {
     const r = await wa.text(msg.waId, text);
@@ -37,9 +39,9 @@ export async function handleIncoming(msg: Inbound) {
       return onRegistered(res.customer);
     }
     if (res.reason === "invalid") {
-      await reply(`⚠️ في بيانات ناقصة أو غير صحيحة:\n• ${res.missing?.join("\n• ")}\n\nممكن تعبي النموذج مرة ثانية؟`);
+      await reply(`⚠️ توجد بيانات ناقصة أو غير صحيحة:\n• ${res.missing?.join("\n• ")}\n\nنرجو تعبئة النموذج مرة أخرى.`);
     }
-    return startRegistration(customer, conv, "افتح النموذج وكمّل بياناتك 👇");
+    return startRegistration(customer, conv, "يرجى فتح النموذج وإكمال بياناتك 👇");
   }
 
   // --- 2. Chat registration in progress → it owns the conversation until done or cancelled ---
@@ -60,21 +62,30 @@ export async function handleIncoming(msg: Inbound) {
     if (!customer.registration_complete) {
       conv.state = { ...conv.state, pending_service: { key, name: msg.text ?? key } };
       await setState(conv.id, conv.state);
-      return startRegistration(customer, conv, `عشان نبدأ طلب *${msg.text ?? "الخدمة"}*، محتاجين نسجل بياناتك مرة واحدة بس.`);
+      return startRegistration(customer, conv, `لبدء طلب *${msg.text ?? "الخدمة"}*، نحتاج إلى تسجيل بياناتك مرة واحدة فقط.`);
     }
-    return reply(`تمام، اخترت: *${msg.text}*\n(تنفيذ الخدمة هيتضاف في الخطوات الجاية)`);
+    return requestService(customer, conv, key, msg.text ?? key);
   }
   if (id === MENU_IDS.myOrders) {
-    return reply(customer.registration_complete ? "لسه مفيش طلبات على حسابك." : "لسه مفيش طلبات. ابدأ بحاسبة أسعار الشحن من القايمة 👇");
+    return reply(customer.registration_complete ? "لا توجد طلبات على حسابك حتى الآن." : "لا توجد طلبات حتى الآن. يمكنك البدء بحاسبة أسعار الشحن من القائمة 👇");
   }
-  if (id === MENU_IDS.human) return reply("تم تحويل طلبك لموظف خدمة العملاء، وهيتواصل معاك قريب.");
+  if (id === MENU_IDS.human) return handoffToHuman(customer, conv, "طلب التحدث مع موظف من القائمة");
 
-  // --- 5. Free text (LLM agent comes in Step 3) ---
-  const greeting = isNew
-    ? "أهلاً بيك في *هلال الشرق للتجارة* 🌙\nمنصة الخدمات التجارية المتكاملة للاستيراد من الصين.\n\nتقدر تحسب سعر شحنتك فوراً، أو تختار الخدمة اللي محتاجها 👇"
-    : customer.registration_complete
-      ? `أهلاً ${customer.full_name ?? ""} 👋\nرقم العميل: *${customer.code}*\nإزاي نقدر نساعدك؟`
-      : "أهلاً بيك 👋 إزاي نقدر نساعدك؟";
-  await sendMainMenu(msg.waId, greeting);
-  await logOutbound(conv.id, undefined, "interactive", "[main_menu]");
+  // --- 5. Free text → AI agent ---
+  const text = (msg.text ?? "").trim();
+  const justGreeting = /^(ال)?سلام|^مرحب|^هلا|^اهلا|^أهلا|^hi\b|^hello\b|^hey\b/i.test(text) && text.length < 30;
+
+  if (isNew) {
+    // First contact: deterministic welcome + menu, then answer the question if there was one.
+    await sendMainMenu(msg.waId, "أهلاً بك في *هلال الشرق للتجارة* 🌙\nمنصة الخدمات التجارية المتكاملة للاستيراد من الصين.\n\nيمكنك حساب سعر شحنتك فوراً، أو اختيار الخدمة التي تحتاجها، أو كتابة سؤالك 👇");
+    await logOutbound(conv.id, undefined, "interactive", "[رسالة ترحيب + القائمة]");
+    if (agentEnabled() && text && !justGreeting) await runAgent(customer, conv, msg.waMessageId);
+    return;
+  }
+  if (agentEnabled()) return runAgent(customer, conv, msg.waMessageId);
+
+  await sendMainMenu(msg.waId, customer.registration_complete
+    ? `أهلاً ${customer.full_name ?? ""} 👋\nرقم العميل: *${customer.code}*\nكيف يمكننا مساعدتك؟`
+    : "أهلاً بك 👋 كيف يمكننا مساعدتك؟");
+  await logOutbound(conv.id, undefined, "interactive", "[القائمة الرئيسية]");
 }

@@ -20,6 +20,10 @@ const schema = z.object({
   WHATSAPP_FLOW_MODE: z.enum(["draft", "published"]).default("draft"), // draft = test before publishing the flow
   PRIVACY_POLICY_URL: z.string().url().optional(),
 
+  // AI agent (OpenRouter). Without a key the bot falls back to the menu for free text.
+  OPENROUTER_API_KEY: z.string().optional(),
+  OPENROUTER_MODEL: z.string().default("anthropic/claude-sonnet-5.5"),
+
   // Admin panel login (Supabase Auth). These two are public by design (browser uses them).
   NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().optional(),

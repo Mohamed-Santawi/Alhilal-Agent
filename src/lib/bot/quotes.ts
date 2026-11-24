@@ -21,12 +21,12 @@ async function say(customer: Customer, conv: Conversation, text: string) {
 /** Sends the link to the shipping price calculator. No registration needed. */
 export async function sendQuoteLink(customer: Customer, conv: Conversation) {
   const base = publicBaseUrl();
-  if (!base) return say(customer, conv, "حاسبة الأسعار غير متاحة حالياً، تقدر تكلم موظف من القايمة.");
+  if (!base) return say(customer, conv, "حاسبة الأسعار غير متاحة حالياً، ويمكنك التحدث مع موظف من القائمة.");
   const token = await issueFormToken(customer.id, "quote", QUOTE_LINK_TTL_MIN);
   await say(customer, conv, [
     "🧮 *حاسبة أسعار الشحن*",
     "",
-    "أدخل نوع البضاعة، وطريقة الشحن (بحري أو جوي)، وعدد الكراتين ومقاساتها ووزنها، ويطلع لك السعر فوراً.",
+    "أدخل نوع البضاعة وطريقة الشحن وعدد الكراتين ومقاساتها ووزنها، وسيظهر لك السعر فوراً.",
     "",
     link(base, token),
   ].join("\n"));
@@ -34,7 +34,7 @@ export async function sendQuoteLink(customer: Customer, conv: Conversation) {
 const link = (base: string, token: string) => `${base}/quote?t=${token}`;
 
 /**
- * "كمّل الطلب" on a quote. Unregistered → remember the quote and start registration;
+ * "إكمال الطلب" on a quote. Unregistered → remember the quote and start registration;
  * registered → accept it right away.
  */
 export async function proceedWithQuote(
@@ -42,12 +42,12 @@ export async function proceedWithQuote(
   startRegistration: (c: Customer, v: Conversation, intro: string) => Promise<unknown>,
 ) {
   const q = await getQuote(quoteId);
-  if (!q || q.customer_id !== customer.id) return say(customer, conv, "التسعيرة غير موجودة. اعمل تسعيرة جديدة من القايمة.");
+  if (!q || q.customer_id !== customer.id) return say(customer, conv, "التسعيرة غير موجودة. يمكنك إنشاء تسعيرة جديدة من القائمة.");
 
   if (!customer.registration_complete) {
     conv.state = { ...conv.state, pending_quote: quoteId };
     await setState(conv.id, conv.state);
-    return startRegistration(customer, conv, `ممتاز 👍 عشان نكمل طلب الشحن بالتسعيرة *${q.code}*، محتاجين نسجل بياناتك مرة واحدة بس.`);
+    return startRegistration(customer, conv, `ممتاز 👍 لإكمال طلب الشحن بالتسعيرة *${q.code}*، نحتاج إلى تسجيل بياناتك مرة واحدة فقط.`);
   }
   return acceptQuote(customer, conv, quoteId);
 }
@@ -56,10 +56,10 @@ export async function acceptQuote(customer: Customer, conv: Conversation, quoteI
   const q = await getQuote(quoteId);
   if (!q || q.customer_id !== customer.id) return;
 
-  if (q.status === "accepted") return say(customer, conv, `طلبك بالتسعيرة ${q.code} مستلم من قبل، وفريقنا هيتواصل معاك ✅`);
+  if (q.status === "accepted") return say(customer, conv, `طلبك بالتسعيرة ${q.code} مستلم مسبقاً، وسيتواصل معك فريقنا ✅`);
   if (new Date(q.valid_until) < new Date()) {
     await db().from("shipping_quotes").update({ status: "expired" }).eq("id", q.id);
-    await say(customer, conv, `⏳ التسعيرة ${q.code} انتهت صلاحيتها لأن الأسعار بتتغير. هبعتلك الحاسبة تاني عشان تحسب بالأسعار الحالية.`);
+    await say(customer, conv, `⏳ انتهت صلاحية التسعيرة ${q.code} نظراً لتغيّر الأسعار. سنرسل لك الحاسبة مرة أخرى لحساب السعر بالأسعار الحالية.`);
     return sendQuoteLink(customer, conv);
   }
 
@@ -74,7 +74,29 @@ export async function acceptQuote(customer: Customer, conv: Conversation, quoteI
   await say(customer, conv, [
     `✅ تم استلام طلب الشحن بالتسعيرة *${q.code}*`,
     ``,
-    `فريقنا هيتواصل معاك خلال 24 ساعة لتأكيد التفاصيل وخطوات الدفع وعنوان المستودع.`,
+    `سيتواصل معك فريقنا خلال 24 ساعة لتأكيد التفاصيل وخطوات الدفع وعنوان المستودع.`,
+  ].join("\n"));
+}
+
+/** Registered customer picked a service: open a task for the team (so the promise below is real). */
+export async function requestService(customer: Customer, conv: Conversation, key: string, name: string) {
+  const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const dup = await db().from("tasks").select("id").eq("customer_id", customer.id).eq("type", "service_request")
+    .eq("status", "open").ilike("title", `%${key}%`).gte("created_at", since).limit(1);
+  if (!dup.data?.length) {
+    await db().from("tasks").insert({
+      customer_id: customer.id,
+      type: "service_request",
+      title: `طلب خدمة «${name}» [${key}] من ${customer.full_name ?? customer.code}`,
+      due_at: new Date(Date.now() + 24 * 3600_000).toISOString(),
+    });
+    await audit(customer.id, "service.requested", "tasks", undefined, { key, name });
+  }
+  await say(customer, conv, [
+    `✅ تم استلام طلبك لخدمة *${name}*`,
+    ``,
+    `سيتواصل معك أحد أعضاء فريقنا خلال 24 ساعة لمعرفة التفاصيل وتقديم عرض السعر.`,
+    `رقم العميل: *${customer.code}*`,
   ].join("\n"));
 }
 
@@ -92,8 +114,7 @@ export async function onRegistered(customer: Customer) {
   if (typeof pending_quote === "string") return acceptQuote(customer, conv, pending_quote);
   if (pending_service && typeof pending_service === "object") {
     const s = pending_service as { key: string; name: string };
-    await say(customer, conv, `تمام، نكمل طلب *${s.name}* 👇\n(تنفيذ الخدمة هيتضاف في الخطوات الجاية)`);
-    return;
+    return requestService(customer, conv, s.key, s.name);
   }
-  await sendMainMenu(customer.wa_id, "إزاي نقدر نساعدك؟");
+  await sendMainMenu(customer.wa_id, "كيف يمكننا مساعدتك؟");
 }

@@ -7,8 +7,8 @@ type Category = { key: string; name_ar: string; hint_ar: string | null; kinds: K
 type Container = { key: string; name_ar: string; hint_ar: string | null; price: number | null };
 
 const KINDS: { kind: Kind; label: string; sub: string }[] = [
-  { kind: "air", label: "جوي ✈️", sub: "بالكيلو · أقل شي 20 كجم" },
-  { kind: "lcl", label: "بحري مجمّع LCL 🚢", sub: "بالمتر المكعب · أقل شي 1 CBM" },
+  { kind: "air", label: "جوي ✈️", sub: "بالكيلو · الحد الأدنى 20 كجم" },
+  { kind: "lcl", label: "بحري مجمّع LCL 🚢", sub: "بالمتر المكعب · الحد الأدنى 1 CBM" },
   { kind: "fcl", label: "حاوية كاملة FCL 📦", sub: "حاويات 20 و40 قدم، ومبرّدة" },
 ];
 const KIND_LABEL: Record<Kind, string> = { air: "جوي ✈️", lcl: "بحري مجمّع (LCL) 🚢", fcl: "حاوية كاملة (FCL) 📦" };
@@ -61,13 +61,13 @@ export default function QuoteForm({ token, categories, containers, samples, divi
   async function submit(ev: React.FormEvent) {
     ev.preventDefault();
     setError("");
-    if (!category) return setError("اختار نوع البضاعة");
-    if (!kind) return setError("اختار طريقة الشحن");
+    if (!category) return setError("يرجى اختيار نوع البضاعة");
+    if (!kind) return setError("يرجى اختيار طريقة الشحن");
     const fd = new FormData();
     fd.set("token", token); fd.set("category", category); fd.set("kind", kind);
     if (kind === "fcl") {
       const picked = Object.entries(counts).filter(([, c]) => c > 0).map(([key, count]) => ({ key, count }));
-      if (!picked.length) return setError("اختار نوع الحاوية وعددها");
+      if (!picked.length) return setError("يرجى اختيار نوع الحاوية وعددها");
       fd.set("containers", JSON.stringify(picked));
     } else {
       const cartons = rows
@@ -84,10 +84,10 @@ export default function QuoteForm({ token, categories, containers, samples, divi
       const res = await fetch("/api/quote", { method: "POST", body: fd });
       const json = await res.json().catch(() => ({}));
       if (res.ok) { setResult(json); window.scrollTo({ top: 0, behavior: "smooth" }); }
-      else if (res.status === 410) setError("الرابط انتهى. ارجع للواتساب واطلب الحاسبة من القايمة.");
-      else setError(json.error ?? "حصلت مشكلة، حاول مرة ثانية.");
+      else if (res.status === 410) setError("انتهت صلاحية الرابط. يرجى العودة إلى الواتساب وطلب الحاسبة من القائمة.");
+      else setError(json.error ?? "حدثت مشكلة، يرجى المحاولة مرة أخرى.");
     } catch {
-      setError("حصلت مشكلة في الاتصال، حاول مرة ثانية.");
+      setError("حدثت مشكلة في الاتصال، يرجى المحاولة مرة أخرى.");
     } finally {
       setBusy(false);
     }
@@ -101,7 +101,7 @@ export default function QuoteForm({ token, categories, containers, samples, divi
     if (res.ok && json.status === "register") { window.location.href = json.url; return; }
     if (res.ok && json.status === "accepted") { setProceed("accepted"); return; }
     setProceed("");
-    setError(res.status === 410 ? "الرابط انتهى. ارجع للواتساب واضغط «كمّل الطلب» تحت التسعيرة." : "حصلت مشكلة، حاول مرة ثانية.");
+    setError(res.status === 410 ? "انتهت صلاحية الرابط. يرجى العودة إلى الواتساب والضغط على «إكمال الطلب» أسفل التسعيرة." : "حدثت مشكلة، يرجى المحاولة مرة أخرى.");
   }
 
   // ---------------- Result ----------------
@@ -146,20 +146,20 @@ export default function QuoteForm({ token, categories, containers, samples, divi
           {b.kind === "fcl" ? "⚠️ السعر مبدئي، ويتم تأكيده مع فريقنا قبل الدفع." : "⚠️ السعر مبدئي، والنهائي حسب الوزن والحجم الفعلي في مستودعنا."}<br />
           صالح حتى: {new Date(result.quote.valid_until).toLocaleDateString("en-GB")}
         </p>
-        <p className="text-center text-sm text-slate-500">📩 اتبعتلك نسخة من التسعيرة على الواتساب</p>
+        <p className="text-center text-sm text-slate-500">📩 أُرسلت نسخة من التسعيرة إلى الواتساب</p>
 
         {proceed === "accepted" ? (
           <div className="rounded-xl bg-emerald-50 px-4 py-4 text-center text-emerald-800">
-            ✅ تم استلام طلبك، وفريقنا هيتواصل معاك خلال 24 ساعة.
+            ✅ تم استلام طلبك، وسيتواصل معك فريقنا خلال 24 ساعة.
           </div>
         ) : (
           <>
             {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-red-700">{error}</p>}
             <button onClick={goOn} disabled={proceed === "sending"} className={btnGold}>
-              {proceed === "sending" ? "لحظة..." : result.registered ? "كمّل الطلب" : "كمّل الطلب (تسجيل البيانات)"}
+              {proceed === "sending" ? "يرجى الانتظار..." : result.registered ? "إكمال الطلب" : "إكمال الطلب (تسجيل البيانات)"}
             </button>
             <button onClick={() => { setResult(null); setError(""); }} className="w-full rounded-xl border-2 border-slate-200 py-3 font-bold text-slate-600">
-              احسب تسعيرة ثانية
+              حساب تسعيرة أخرى
             </button>
           </>
         )}
@@ -173,7 +173,7 @@ export default function QuoteForm({ token, categories, containers, samples, divi
       {samples && <SampleBanner />}
       <div className="text-center">
         <h2 className="text-xl font-bold text-[#0B1B3A]">🧮 حاسبة أسعار الشحن</h2>
-        <p className="mt-1 text-sm text-slate-500">اعرف سعر شحنتك من الصين للسعودية فوراً، ومن غير تسجيل</p>
+        <p className="mt-1 text-sm text-slate-500">اعرف سعر شحنتك من الصين إلى السعودية فوراً، دون الحاجة إلى التسجيل</p>
       </div>
 
       <Section n={1} title="نوع البضاعة">
@@ -204,7 +204,7 @@ export default function QuoteForm({ token, categories, containers, samples, divi
       </Section>
 
       {kind === "fcl" && (
-        <Section n={3} title="الحاويات" hint="اختار نوع الحاوية والعدد">
+        <Section n={3} title="الحاويات" hint="اختر نوع الحاوية والعدد">
           <div className="space-y-3">
             {containers.map((c) => {
               const count = counts[c.key] ?? 0;
@@ -232,7 +232,7 @@ export default function QuoteForm({ token, categories, containers, samples, divi
       )}
 
       {kind !== "fcl" && (
-      <Section n={3} title="الكراتين" hint="من قائمة التعبئة اللي عندك من المصنع. لو في أكثر من مقاس أضف سطر لكل مقاس.">
+      <Section n={3} title="الكراتين" hint="من قائمة التعبئة الواردة من المصنع. إذا كان هناك أكثر من مقاس، أضف سطراً لكل مقاس.">
         <div className="space-y-3">
           {rows.map((r, i) => (
             <div key={i} className="rounded-xl border border-slate-200 p-3">
@@ -265,19 +265,19 @@ export default function QuoteForm({ token, categories, containers, samples, divi
           </div>
         )}
         {totals.count > 0 && kind === "lcl" && totals.cbm < 1 && (
-          <p className="text-xs text-amber-700">الحجم أقل من 1 CBM، وهيتحسب على 1 CBM (الحد الأدنى للبحري المجمّع)</p>
+          <p className="text-xs text-amber-700">الحجم أقل من 1 CBM، وسيُحتسب على أساس 1 CBM (الحد الأدنى للشحن البحري المجمّع)</p>
         )}
         {totals.count > 0 && kind === "air" && Math.max(totals.kg, totals.vol) < 20 && (
-          <p className="text-xs text-amber-700">الوزن أقل من 20 كجم، وهيتحسب على 20 كجم (الحد الأدنى للجوي)</p>
+          <p className="text-xs text-amber-700">الوزن أقل من 20 كجم، وسيُحتسب على أساس 20 كجم (الحد الأدنى للشحن الجوي)</p>
         )}
       </Section>
 
       )}
 
-      <Section n={4} title="صورة المنتج" hint="اختياري — بتساعدنا نتأكد من نوع البضاعة">
+      <Section n={4} title="صورة المنتج" hint="اختياري — تساعدنا على التأكد من نوع البضاعة">
         <label className="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-dashed border-slate-300 px-4 py-4">
           <span className="text-2xl">📷</span>
-          <span className="text-slate-600">{photo ? photo.name : "اختار صورة"}</span>
+          <span className="text-slate-600">{photo ? photo.name : "اختر صورة"}</span>
           <input type="file" accept="image/*" className="sr-only" onChange={(e) => setPhoto(e.target.files?.[0] ?? null)} />
         </label>
       </Section>

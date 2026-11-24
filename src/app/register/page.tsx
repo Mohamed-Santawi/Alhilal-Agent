@@ -20,9 +20,9 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
       <Shell>
         <div className="text-center py-6">
           <div className="text-5xl mb-4">⏳</div>
-          <h2 className="text-xl font-bold text-[#0B1B3A] mb-2">الرابط انتهى أو تم استخدامه</h2>
+          <h2 className="text-xl font-bold text-[#0B1B3A] mb-2">انتهت صلاحية الرابط أو تم استخدامه</h2>
           <p className="text-slate-600 leading-7">
-            ارجع لمحادثة الواتساب وابعت أي رسالة، وهيوصلك رابط تسجيل جديد.
+            يرجى العودة إلى محادثة الواتساب وإرسال أي رسالة، وسيصلك رابط تسجيل جديد.
           </p>
         </div>
       </Shell>

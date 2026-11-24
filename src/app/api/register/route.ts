@@ -9,19 +9,19 @@ import { wa } from "@/lib/whatsapp/send";
 export const runtime = "nodejs";
 
 const FIELD_ERR: Record<string, string> = {
-  full_name: "اكتب الاسم الكامل",
+  full_name: "يرجى كتابة الاسم الكامل",
   email: "البريد الإلكتروني غير صحيح",
-  customer_type: "اختار نوع العميل",
+  customer_type: "يرجى اختيار نوع العميل",
   company_name: "اسم المنشأة مطلوب للشركات",
   cr_number: "رقم السجل التجاري مطلوب للشركات",
-  vat_number: "الرقم الضريبي 15 رقم يبدأ وينتهي بـ 3",
-  region: "اختار المنطقة",
-  city: "اكتب المدينة",
-  district: "اكتب الحي",
-  street: "اكتب اسم الشارع",
-  building_no: "رقم المبنى لازم 4 أرقام",
-  postal_code: "الرمز البريدي لازم 5 أرقام",
-  privacy_consent: "لازم توافق على سياسة الخصوصية",
+  vat_number: "الرقم الضريبي مكوّن من 15 رقماً ويبدأ وينتهي بالرقم 3",
+  region: "يرجى اختيار المنطقة",
+  city: "يرجى كتابة المدينة",
+  district: "يرجى كتابة الحي",
+  street: "يرجى كتابة اسم الشارع",
+  building_no: "رقم المبنى يجب أن يكون 4 أرقام",
+  postal_code: "الرمز البريدي يجب أن يكون 5 أرقام",
+  privacy_consent: "يجب الموافقة على سياسة الخصوصية",
 };
 
 export async function POST(req: NextRequest) {

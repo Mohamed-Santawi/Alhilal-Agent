@@ -56,8 +56,8 @@ export function validateCartons(cartons: Carton[]): string | null {
   for (const [i, c] of cartons.entries()) {
     const n = i + 1;
     if (!Number.isInteger(c.qty) || c.qty < 1 || c.qty > LIMITS.maxQty) return `السطر ${n}: عدد الكراتين غير صحيح`;
-    for (const d of [c.l, c.w, c.h]) if (!(d > 0 && d <= LIMITS.maxCm)) return `السطر ${n}: الأبعاد لازم تكون بين 1 و${LIMITS.maxCm} سم`;
-    if (!(c.kg > 0 && c.kg <= LIMITS.maxKg)) return `السطر ${n}: الوزن لازم يكون أكبر من صفر`;
+    for (const d of [c.l, c.w, c.h]) if (!(d > 0 && d <= LIMITS.maxCm)) return `السطر ${n}: يجب أن تكون الأبعاد بين 1 و${LIMITS.maxCm} سم`;
+    if (!(c.kg > 0 && c.kg <= LIMITS.maxKg)) return `السطر ${n}: يجب أن يكون الوزن أكبر من صفر`;
   }
   return null;
 }

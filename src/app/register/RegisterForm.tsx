@@ -21,26 +21,26 @@ const toLatinDigits = (s: string) => s.replace(/[٠-٩]/g, (c) => String("٠١٢
 function validate(v: Values): Errors {
   const e: Errors = {};
   const s = (k: string) => String(v[k] ?? "").trim();
-  if (s("full_name").length < 3) e.full_name = "اكتب الاسم الكامل";
+  if (s("full_name").length < 3) e.full_name = "يرجى كتابة الاسم الكامل";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s("email"))) e.email = "البريد الإلكتروني غير صحيح";
   if (v.customer_type === "company") {
     if (!s("company_name")) e.company_name = "اسم المنشأة مطلوب";
     if (!/^\d{7,10}$/.test(toLatinDigits(s("cr_number")))) e.cr_number = "رقم السجل من 7 إلى 10 أرقام";
     const vat = toLatinDigits(s("vat_number")).replace(/\s/g, "");
-    if (vat && !/^3\d{13}3$/.test(vat)) e.vat_number = "15 رقم يبدأ وينتهي بـ 3";
+    if (vat && !/^3\d{13}3$/.test(vat)) e.vat_number = "15 رقماً يبدأ وينتهي بالرقم 3";
   }
-  if (!s("region")) e.region = "اختار المنطقة";
-  if (!s("city")) e.city = "اكتب المدينة";
-  if (!s("district")) e.district = "اكتب الحي";
-  if (!s("street")) e.street = "اكتب اسم الشارع";
+  if (!s("region")) e.region = "يرجى اختيار المنطقة";
+  if (!s("city")) e.city = "يرجى كتابة المدينة";
+  if (!s("district")) e.district = "يرجى كتابة الحي";
+  if (!s("street")) e.street = "يرجى كتابة اسم الشارع";
   if (!/^\d{4}$/.test(toLatinDigits(s("building_no")))) e.building_no = "4 أرقام";
   if (!/^\d{5}$/.test(toLatinDigits(s("postal_code")))) e.postal_code = "5 أرقام";
   if (s("short_address") && !/^[A-Za-z]{4}\d{4}$/.test(s("short_address").replace(/\s/g, ""))) e.short_address = "مثال: RRRD2929";
   if (v.recipient_other) {
-    if (s("recipient_name").length < 3) e.recipient_name = "اكتب اسم المستلم";
+    if (s("recipient_name").length < 3) e.recipient_name = "يرجى كتابة اسم المستلم";
     if (toLatinDigits(s("recipient_phone")).replace(/\D/g, "").length < 9) e.recipient_phone = "رقم الجوال غير صحيح";
   }
-  if (!v.privacy_consent) e.privacy_consent = "لازم توافق على سياسة الخصوصية";
+  if (!v.privacy_consent) e.privacy_consent = "يجب الموافقة على سياسة الخصوصية";
   return e;
 }
 
@@ -98,9 +98,9 @@ export default function RegisterForm({ token, privacyUrl }: { token: string; pri
       <div className="text-center py-6">
         <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-emerald-50 text-3xl">✅</div>
         <h2 className="text-xl font-bold text-[#0B1B3A] mb-2">تم تسجيلك بنجاح يا {done.name}</h2>
-        <p className="text-slate-600 mb-4">رقم العميل الخاص بيك</p>
+        <p className="text-slate-600 mb-4">رقم العميل الخاص بك</p>
         <p className="text-3xl font-extrabold text-[#B8923B] mb-6" dir="ltr">{done.code}</p>
-        <p className="text-slate-600 leading-7">ارجع لمحادثة الواتساب، هتلاقي قايمة الخدمات مستنياك 👋</p>
+        <p className="text-slate-600 leading-7">يمكنك العودة إلى محادثة الواتساب، وستجد قائمة الخدمات بانتظارك 👋</p>
       </div>
     );
   }
@@ -109,8 +109,8 @@ export default function RegisterForm({ token, privacyUrl }: { token: string; pri
     return (
       <div className="text-center py-6">
         <div className="text-5xl mb-4">⏳</div>
-        <h2 className="text-xl font-bold text-[#0B1B3A] mb-2">الرابط انتهى</h2>
-        <p className="text-slate-600 leading-7">ارجع لمحادثة الواتساب وابعت أي رسالة، وهيوصلك رابط جديد.</p>
+        <h2 className="text-xl font-bold text-[#0B1B3A] mb-2">انتهت صلاحية الرابط</h2>
+        <p className="text-slate-600 leading-7">يرجى العودة إلى محادثة الواتساب وإرسال أي رسالة، وسيصلك رابط جديد.</p>
       </div>
     );
   }
@@ -148,7 +148,7 @@ export default function RegisterForm({ token, privacyUrl }: { token: string; pri
           <label htmlFor="region" className="block text-sm font-medium text-slate-700 mb-1.5">المنطقة</label>
           <select id="region" name="region" value={String(v.region)} onChange={set("region")}
             className={`w-full rounded-xl border bg-white px-4 py-3 text-base outline-none focus:border-[#D4AF5A] focus:ring-2 focus:ring-[#D4AF5A]/30 ${errors.region ? "border-red-400" : "border-slate-300"}`}>
-            <option value="">اختار المنطقة</option>
+            <option value="">اختر المنطقة</option>
             {Object.entries(REGIONS).map(([k, ar]) => <option key={k} value={k}>{ar}</option>)}
           </select>
           {errors.region && <p className="mt-1 text-sm text-red-600">{errors.region}</p>}
@@ -195,7 +195,7 @@ export default function RegisterForm({ token, privacyUrl }: { token: string; pri
       </div>
 
       {status === "error" && (
-        <p className="rounded-xl bg-red-50 px-4 py-3 text-red-700">حصلت مشكلة، حاول مرة ثانية بعد شوية.</p>
+        <p className="rounded-xl bg-red-50 px-4 py-3 text-red-700">حدثت مشكلة، يرجى المحاولة مرة أخرى بعد قليل.</p>
       )}
 
       <button type="submit" disabled={status === "sending"}

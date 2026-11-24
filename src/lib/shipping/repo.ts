@@ -68,7 +68,7 @@ export async function priceContainers(req: { key: string; count: number }[]): Pr
   for (const r of req) {
     const o = opts.find((x) => x.key === r.key);
     if (!o) return "نوع الحاوية غير متاح";
-    if (o.price === null) return `سعر ${o.name_ar} بيتحدد من الفريق، كلّم موظف من القايمة`;
+    if (o.price === null) return `سعر ${o.name_ar} يحدده فريقنا، يرجى التحدث مع موظف من القائمة`;
     lines.push({ key: o.key, name_ar: o.name_ar, count: r.count, price: o.price });
   }
   return lines;

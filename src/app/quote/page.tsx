@@ -20,8 +20,8 @@ export default async function QuotePage({ searchParams }: { searchParams: Promis
       <Shell>
         <div className="text-center py-6">
           <div className="text-5xl mb-4">⏳</div>
-          <h2 className="text-xl font-bold text-[#0B1B3A] mb-2">الرابط انتهى</h2>
-          <p className="text-slate-600 leading-7">ارجع لمحادثة الواتساب واختار «حاسبة أسعار الشحن» من القايمة، وهيوصلك رابط جديد.</p>
+          <h2 className="text-xl font-bold text-[#0B1B3A] mb-2">انتهت صلاحية الرابط</h2>
+          <p className="text-slate-600 leading-7">يرجى العودة إلى محادثة الواتساب واختيار «حاسبة أسعار الشحن» من القائمة، وسيصلك رابط جديد.</p>
         </div>
       </Shell>
     );

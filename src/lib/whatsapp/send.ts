@@ -106,4 +106,7 @@ export const wa = {
     }),
 
   markRead: (messageId: string) => callApi({ status: "read", message_id: messageId }),
+
+  /** Marks as read AND shows "typing…" to the customer (up to ~25s or until we reply). */
+  typing: (messageId: string) => callApi({ status: "read", message_id: messageId, typing_indicator: { type: "text" } }),
 };
