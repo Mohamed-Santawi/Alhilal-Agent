@@ -62,7 +62,11 @@ export const TOOL_DEFS: ToolDef[] = [
   },
   {
     type: "function",
-    function: { name: "send_main_menu", description: "يرسل قائمة الخدمات التفاعلية.", parameters: obj({}) },
+    function: {
+      name: "send_main_menu",
+      description: "يرسل قائمة الخدمات التفاعلية مع نص قصير فوقها، وينهي ردك (لا يُرسل بعدها أي نص). استخدمها للترحيب بالتحية.",
+      parameters: obj({ text: { type: "string", description: "نص قصير يظهر فوق القائمة، مثل: أهلاً بك في هلال الشرق، كيف يمكننا مساعدتك؟" } }),
+    },
   },
   {
     type: "function",
@@ -168,10 +172,14 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolCtx): Prom
       return { sent: true };
 
     case "send_main_menu":
-      await sendMainMenu(customer.wa_id, "اختر الخدمة التي تحتاجها 👇");
-      await logOutbound(conv.id, undefined, "interactive", "[القائمة الرئيسية]");
+    {
+      const text = String(args.text ?? "").trim().slice(0, 300) || "أهلاً بك في هلال الشرق 🌙\nكيف يمكننا مساعدتك؟ اختر من القائمة 👇";
+      await sendMainMenu(customer.wa_id, text);
+      await logOutbound(conv.id, undefined, "interactive", `${text}\n[القائمة الرئيسية]`);
       ctx.sent = true;
+      ctx.stop = true; // the menu is the whole reply
       return { sent: true };
+    }
 
     case "start_registration":
     {
