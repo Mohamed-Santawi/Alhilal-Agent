@@ -1,7 +1,7 @@
 import { db } from "../supabase";
-import { listCategoryOptions, listContainerOptions } from "../shipping/repo";
+import { getShippingSettings, listCategoryOptions, listContainerOptions, listMainCities } from "../shipping/repo";
 import { createAndSendQuote } from "../shipping/quote-service";
-import type { Kind } from "../shipping/pricing";
+import { FCL_SERVICES, PORTS } from "../shipping/pricing";
 import { sendMainMenu } from "../bot/menu";
 import { requestService, sendQuoteLink } from "../bot/quotes";
 import { startRegistration } from "../bot/registration-chat";
@@ -18,7 +18,7 @@ export const TOOL_DEFS: ToolDef[] = [
     type: "function",
     function: {
       name: "get_shipping_options",
-      description: "أنواع البضاعة المتاحة للشحن (key واسم ووصف وطرق الشحن المتاحة لكل نوع: air / lcl / fcl)، وأسعار الوحدة، والحد الأدنى، وأنواع الحاويات الكاملة وأسعارها. استخدمها قبل estimate_shipping لمعرفة category_key الصحيح.",
+      description: "معلومات الشحن الحالية: أنواع البضاعة (key) وطرق الشحن المتاحة لكل نوع، أسعار الوحدة، الحدود الدنيا، مدة الوصول، المدن الرئيسية ورسوم المناطق النائية، أنواع الحاويات وموانئ الوصول. استخدمها قبل estimate_shipping وللإجابة عن أسئلة المدة والتوصيل.",
       parameters: obj({}),
     },
   },
@@ -26,27 +26,30 @@ export const TOOL_DEFS: ToolDef[] = [
     type: "function",
     function: {
       name: "estimate_shipping",
-      description: "يحسب تسعيرة شحن مبدئية بمحرك الأسعار الرسمي، ويحفظها، ويرسلها للعميل على واتساب مع زر «إكمال الطلب». للجوي وLCL مرّر cartons، وللحاويات الكاملة مرّر containers.",
+      description: "للشحن الجوي (air) أو البحري الجزئي (lcl) فقط: يحسب تسعيرة مبدئية بمحرك الأسعار الرسمي، ويحفظها، ويرسلها للعميل على واتساب مع زر «إكمال الطلب». الحاويات الكاملة لا تُسعّر هنا (أرسل send_calculator_link).",
       parameters: obj({
-        category_key: { type: "string", description: "key نوع البضاعة من get_shipping_options" },
-        kind: { type: "string", enum: ["air", "lcl", "fcl"] },
-        cartons: {
+        kind: { type: "string", enum: ["air", "lcl"] },
+        city: { type: "string", description: "مدينة التوصيل في السعودية" },
+        items: {
           type: "array",
-          description: "سطر لكل مقاس كرتونة (air / lcl)",
+          description: "منتج لكل سطر؛ الشحنة قد تحتوي أكثر من منتج",
           items: obj({
-            qty: { type: "integer", description: "عدد الكراتين بهذا المقاس" },
-            l: { type: "number", description: "الطول بالسنتيمتر" },
-            w: { type: "number", description: "العرض بالسنتيمتر" },
-            h: { type: "number", description: "الارتفاع بالسنتيمتر" },
-            kg: { type: "number", description: "وزن الكرتونة الواحدة بالكيلو" },
-          }, ["qty", "l", "w", "h", "kg"]),
+            category_key: { type: "string", description: "key نوع البضاعة من get_shipping_options" },
+            product: { type: "string", description: "اسم المنتج كما ذكره العميل" },
+            cartons: {
+              type: "array",
+              description: "سطر لكل مقاس كرتونة",
+              items: obj({
+                qty: { type: "integer", description: "عدد الكراتين بهذا المقاس" },
+                l: { type: "number", description: "الطول بالسنتيمتر" },
+                w: { type: "number", description: "العرض بالسنتيمتر" },
+                h: { type: "number", description: "الارتفاع بالسنتيمتر" },
+                kg: { type: "number", description: "وزن الكرتونة الواحدة بالكيلو" },
+              }, ["qty", "l", "w", "h", "kg"]),
+            },
+          }, ["category_key", "product", "cartons"]),
         },
-        containers: {
-          type: "array",
-          description: "للحاويات الكاملة (fcl) فقط",
-          items: obj({ key: { type: "string", description: "key الحاوية من get_shipping_options" }, count: { type: "integer" } }, ["key", "count"]),
-        },
-      }, ["category_key", "kind"]),
+      }, ["kind", "city", "items"]),
     },
   },
   {
@@ -93,14 +96,16 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolCtx): Prom
   switch (name) {
     case "get_shipping_options": {
       const t = new Date().toISOString();
-      const [cats, containers, rates] = await Promise.all([
+      const [cats, containers, cities, settings, rates] = await Promise.all([
         listCategoryOptions(),
         listContainerOptions(),
+        listMainCities(),
+        getShippingSettings(),
         db().from("shipping_rates").select("category_key, mode, unit_price, min_qty").lte("effective_from", t).or(`effective_to.is.null,effective_to.gt.${t}`),
       ]);
       return {
         categories: cats.map((c) => ({
-          key: c.key, name: c.name_ar, includes: c.hint_ar, kinds: c.kinds,
+          key: c.key, name: c.name_ar, includes: c.hint_ar, kinds: c.kinds.filter((k) => k !== "fcl"),
           air_price_per_kg: n(rates.data?.find((r) => r.category_key === c.key && r.mode === "air")?.unit_price) || null,
           lcl_price_per_cbm: n(rates.data?.find((r) => r.category_key === c.key && r.mode === "sea")?.unit_price) || null,
         })),
@@ -108,18 +113,32 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolCtx): Prom
           air_kg: n(rates.data?.find((r) => r.mode === "air")?.min_qty) || null,
           lcl_cbm: n(rates.data?.find((r) => r.mode === "sea")?.min_qty) || null,
         },
-        containers: containers.map((c) => ({ key: c.key, name: c.name_ar, note: c.hint_ar, price_per_container: c.price ?? "عند الطلب" })),
+        air_rule: `الأعلى بين الوزن الفعلي والوزن الحجمي (الطول×العرض×الارتفاع سم ÷ ${settings.air_volumetric_divisor})`,
+        includes: "الجوي والبحري الجزئي LCL: السعر شامل التخليص والتوصيل من مستودعنا في الصين إلى باب العميل",
+        mixed_shipment_pricing: settings.mixed_pricing === "highest" ? "الشحنة التي فيها أكثر من نوع تُحسب كلها بسعر النوع الأعلى" : "كل منتج يُحسب بسعر نوعه",
+        transit: { air: settings.transit_air_ar, sea: settings.transit_sea_ar, note: settings.customs_notice_ar },
+        delivery: cities.length
+          ? { main_cities: cities, remote_fee_per_carton_sar: settings.remote_fee_per_carton ?? "يحدده الفريق", rule: "أي مدينة خارج القائمة تُعتبر نائية" }
+          : { rule: "لا توجد رسوم إضافية للمدن حالياً" },
+        full_containers: {
+          types: containers.map((c) => ({ key: c.key, name: c.name_ar, note: c.hint_ar })),
+          ports: PORTS.map((p) => p.name_ar),
+          services: FCL_SERVICES.map((x) => x.name_ar),
+          how: "لا يوجد سعر فوري للحاوية الكاملة: يعبّئ العميل طلب الحاوية من الحاسبة (المنتجات بالصور، ميناء الوصول، المدينة، عنوان المصنع في الصين، الخدمات) ويرد الفريق خلال 24 ساعة",
+        },
         currency: "SAR, before 15% VAT",
       };
     }
 
     case "estimate_shipping": {
+      const kind = String(args.kind ?? "");
+      if (kind !== "air" && kind !== "lcl") return { error: "الحاويات الكاملة تُطلب من الحاسبة: أرسل send_calculator_link" };
+      const items = Array.isArray(args.items) ? (args.items as Record<string, unknown>[]) : [];
       const r = await createAndSendQuote({
         customerId: customer.id,
-        category: String(args.category_key ?? ""),
-        kind: String(args.kind ?? "") as Kind,
-        cartons: (args.cartons as never) ?? [],
-        containers: (args.containers as never) ?? [],
+        kind,
+        city: String(args.city ?? ""),
+        items: items.map((i) => ({ category: String(i.category_key ?? ""), product: String(i.product ?? ""), cartons: (i.cartons as never) ?? [] })),
       });
       if (!r.ok) return { error: r.error };
       ctx.sent = true;
@@ -129,8 +148,9 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolCtx): Prom
         total_sar_incl_vat: r.b.total,
         chargeable: `${r.b.chargeable} ${r.b.unit}`,
         min_applied: r.b.min_qty_applied,
+        remote_city: r.b.remote.is_remote,
         prices_are_samples: r.samples,
-        note: "التسعيرة الكاملة وصلت العميل مع زر «إكمال الطلب». علّق بجملة قصيرة فقط.",
+        note: "التسعيرة الكاملة (مع مدة الوصول) وصلت العميل مع زر «إكمال الطلب». علّق بسطر واحد فقط.",
       };
     }
 

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
-  addSurcharge, deleteSurcharge, saveCategory, saveRatesTable, toggleSurcharge,
-  updateFclPrice, updateService, updateSettings,
+  addCities, addSurcharge, deleteCity, deleteSurcharge, saveCategory, saveRatesTable, toggleSurcharge,
+  updateService, updateSettings,
 } from "../../actions";
 import { ActionForm, SaveButton } from "../../ui";
 
@@ -14,21 +14,21 @@ const ACTION_AR: Record<string, string> = {
   "fcl.price_removed": "حاوية «السعر عند الطلب»", "category.created": "إضافة نوع بضاعة", "category.updated": "تعديل نوع بضاعة",
   "surcharge.created": "إضافة رسوم", "surcharge.enabled": "تشغيل رسوم", "surcharge.disabled": "إيقاف رسوم",
   "surcharge.deleted": "حذف رسوم", "service.updated": "تعديل خدمة", "settings.updated": "تعديل الإعدادات",
+  "cities.added": "إضافة مدن رئيسية", "city.deleted": "حذف مدينة",
 };
 
 const input = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#D4AF5A] focus:ring-2 focus:ring-[#D4AF5A]/30";
 
 export type PricingData = {
-  cats: any[]; rates: any[]; containers: any[]; fcl: any[]; surcharges: any[]; services: any[];
+  cats: any[]; rates: any[]; cities: any[]; surcharges: any[]; services: any[];
   settings: any; staff: { id: string; full_name: string }[]; log: any[]; t: string;
 };
 
 export default function PricingView({ data }: { data: PricingData }) {
   const { t } = data;
-  const cats = { data: data.cats }, containers = { data: data.containers }, surcharges = { data: data.surcharges };
+  const cats = { data: data.cats }, surcharges = { data: data.surcharges };
   const services = { data: data.services }, log = { data: data.log };
   const rateOf = (cat: string, mode: string) => data.rates.find((r) => r.category_key === cat && r.mode === mode);
-  const fclOf = (key: string) => data.fcl.find((r) => r.container_key === key);
   const minOf = (mode: string, fallback: number) => {
     const r = data.rates.find((x) => x.mode === mode);
     return r ? n(r.min_qty) : fallback;
@@ -45,7 +45,7 @@ export default function PricingView({ data }: { data: PricingData }) {
       )}
 
       {/* ---------------- Air / LCL — one table ---------------- */}
-      <Card title="أسعار الشحن الجوي والبحري المجمّع" hint="الأسعار قبل الضريبة. الخانة الفارغة تعني أن طريقة الشحن غير متاحة لهذا النوع. التسعيرات المرسلة سابقاً للعملاء لا تتغير.">
+      <Card title="أسعار الشحن الجوي والبحري الجزئي LCL" hint="الأسعار قبل الضريبة، وشاملة التخليص والتوصيل إلى الباب. الخانة الفارغة تعني أن طريقة الشحن غير متاحة لهذا النوع. التسعيرات المرسلة سابقاً للعملاء لا تتغير.">
         <ActionForm action={saveRatesTable} className="space-y-4">
           <div className="flex flex-wrap items-center gap-6 rounded-xl bg-[#FBF6EA] px-4 py-3">
             <span className="text-sm font-bold text-[#0B1B3A]">الحد الأدنى للشحنة:</span>
@@ -93,21 +93,23 @@ export default function PricingView({ data }: { data: PricingData }) {
         </ActionForm>
       </Card>
 
-      {/* ---------------- FCL ---------------- */}
-      <Card title="الحاويات الكاملة FCL" hint="سعر الحاوية الواحدة قبل الضريبة. إذا تُرك السعر فارغاً، ستظهر الحاوية بعبارة «السعر عند الطلب».">
-        <div className="grid gap-3 md:grid-cols-3">
-          {containers.data?.map((c) => {
-            const r = fclOf(c.key);
-            return (
-              <ActionForm key={c.key} action={updateFclPrice} className="flex flex-wrap items-end gap-2 rounded-lg bg-slate-50 p-3">
-                <input type="hidden" name="container_key" value={c.key} />
-                <p className="basis-full font-bold text-[#0B1B3A]">{c.name_ar}</p>
-                <label className="flex-1"><span className="mb-1 block text-xs text-slate-500">ريال / حاوية</span><input name="price" inputMode="decimal" dir="ltr" defaultValue={r ? n(r.price) : ""} placeholder="عند الطلب" className={input} /></label>
-                <SaveButton />
-              </ActionForm>
-            );
-          })}
+      {/* ---------------- Cities ---------------- */}
+      <Card title="المدن الرئيسية (بدون رسوم توصيل إضافية)"
+        hint={`أي مدينة خارج هذه القائمة تُعتبر منطقة نائية، ويُضاف عليها ${s.remote_fee_per_carton ? `${sar(n(s.remote_fee_per_carton))} ريال لكل كرتون` : "رسوم يحددها الفريق (حدد المبلغ من الإعدادات)"}. إذا كانت القائمة فارغة فلا توجد رسوم للمدن، ويكتب العميل مدينته يدوياً.`}>
+        <div className="flex flex-wrap gap-2">
+          {data.cities.length === 0 && <p className="text-sm text-slate-500">لم تُضف مدن بعد.</p>}
+          {data.cities.map((c) => (
+            <ActionForm key={c.id} action={deleteCity} confirm={`حذف «${c.name_ar}» من المدن الرئيسية؟`} className="flex items-center gap-1 rounded-full bg-slate-100 py-1 pl-1 pr-3 text-sm">
+              <input type="hidden" name="id" value={c.id} />
+              <span>{c.name_ar}</span>
+              <button type="submit" className="grid h-6 w-6 place-items-center rounded-full text-slate-500 hover:bg-red-100 hover:text-red-600" aria-label="حذف">✕</button>
+            </ActionForm>
+          ))}
         </div>
+        <ActionForm action={addCities} className="mt-4 flex flex-wrap items-end gap-2 rounded-xl border-2 border-dashed border-[#D4AF5A] p-4">
+          <label className="min-w-60 flex-1"><span className="mb-1 block text-xs text-slate-500">أضف مدينة أو أكثر (افصل بينها بفاصلة)</span><input name="names" placeholder="الرياض، جدة، الدمام" className={input} /></label>
+          <SaveButton label="+ إضافة" />
+        </ActionForm>
       </Card>
 
       {/* ---------------- Surcharges ---------------- */}
@@ -119,7 +121,7 @@ export default function PricingView({ data }: { data: PricingData }) {
             return (
               <div key={x.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2">
                 <div>
-                  <p className="font-bold">{x.name_ar} <span className="text-sm font-normal text-slate-500">· {x.mode === "air" ? "جوي" : x.mode === "sea" ? "بحري (LCL و FCL)" : "الكل"} · {x.kind === "percent" ? `${n(x.amount)}%` : `${sar(n(x.amount))} ريال`}</span></p>
+                  <p className="font-bold">{x.name_ar} <span className="text-sm font-normal text-slate-500">· {x.mode === "air" ? "جوي" : x.mode === "sea" ? "بحري LCL" : "الكل"} · {x.kind === "percent" ? `${n(x.amount)}%` : `${sar(n(x.amount))} ريال`}</span></p>
                   <p className="text-xs text-slate-500">من {day(x.starts_at)} إلى {day(x.ends_at)}</p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -141,7 +143,7 @@ export default function PricingView({ data }: { data: PricingData }) {
         <ActionForm action={addSurcharge} className="mt-4 flex flex-wrap items-end gap-2 rounded-xl border-2 border-dashed border-[#D4AF5A] p-4">
           <label className="min-w-40 flex-1"><span className="mb-1 block text-xs text-slate-500">اسم الرسوم</span><input name="name_ar" placeholder="رسوم مخاطر حرب" className={input} /></label>
           <label className="w-36"><span className="mb-1 block text-xs text-slate-500">على</span>
-            <select name="mode" className={input}><option value="">كل الشحن</option><option value="sea">بحري (LCL و FCL)</option><option value="air">جوي</option></select></label>
+            <select name="mode" className={input}><option value="">كل الشحن</option><option value="sea">بحري LCL</option><option value="air">جوي</option></select></label>
           <label className="w-28"><span className="mb-1 block text-xs text-slate-500">النوع</span>
             <select name="kind" className={input}><option value="percent">نسبة %</option><option value="fixed">مبلغ ثابت</option></select></label>
           <label className="w-24"><span className="mb-1 block text-xs text-slate-500">القيمة</span><input name="amount" inputMode="decimal" dir="ltr" className={input} /></label>
@@ -170,12 +172,27 @@ export default function PricingView({ data }: { data: PricingData }) {
 
       {/* ---------------- Settings ---------------- */}
       <Card title="الإعدادات">
-        <ActionForm action={updateSettings} className="flex flex-wrap items-end gap-3">
-          <label className="w-36"><span className="mb-1 block text-xs text-slate-500">ضريبة القيمة المضافة %</span><input name="vat_rate" inputMode="decimal" dir="ltr" defaultValue={n(s.vat_rate)} className={input} /></label>
-          <label className="w-36"><span className="mb-1 block text-xs text-slate-500">صلاحية التسعيرة (أيام)</span><input name="quote_validity_days" inputMode="numeric" dir="ltr" defaultValue={n(s.quote_validity_days)} className={input} /></label>
-          <label className="w-40"><span className="mb-1 block text-xs text-slate-500">معامل الوزن الحجمي (جوي)</span><input name="air_volumetric_divisor" inputMode="numeric" dir="ltr" defaultValue={n(s.air_volumetric_divisor)} className={input} /></label>
-          <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" name="prices_are_samples" defaultChecked={s.prices_are_samples} className="h-4 w-4 accent-[#B8923B]" /> إظهار «أسعار تجريبية» للعملاء</label>
-          <SaveButton />
+        <ActionForm action={updateSettings} className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="w-36"><span className="mb-1 block text-xs text-slate-500">ضريبة القيمة المضافة %</span><input name="vat_rate" inputMode="decimal" dir="ltr" defaultValue={n(s.vat_rate)} className={input} /></label>
+            <label className="w-36"><span className="mb-1 block text-xs text-slate-500">صلاحية التسعيرة (أيام)</span><input name="quote_validity_days" inputMode="numeric" dir="ltr" defaultValue={n(s.quote_validity_days)} className={input} /></label>
+            <label className="w-40"><span className="mb-1 block text-xs text-slate-500">معامل الوزن الحجمي (جوي)</span><input name="air_volumetric_divisor" inputMode="numeric" dir="ltr" defaultValue={n(s.air_volumetric_divisor)} className={input} /></label>
+            <label className="w-44"><span className="mb-1 block text-xs text-slate-500">رسوم المناطق النائية (ريال / كرتون)</span><input name="remote_fee_per_carton" inputMode="decimal" dir="ltr" defaultValue={s.remote_fee_per_carton ?? ""} placeholder="يحددها الفريق" className={input} /></label>
+            <label className="w-64"><span className="mb-1 block text-xs text-slate-500">الشحنة التي فيها أكثر من نوع بضاعة</span>
+              <select name="mixed_pricing" defaultValue={s.mixed_pricing ?? "highest"} className={input}>
+                <option value="highest">تُحسب كلها بسعر النوع الأعلى</option>
+                <option value="per_item">كل منتج بسعر نوعه</option>
+              </select></label>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label><span className="mb-1 block text-xs text-slate-500">مدة الوصول — جوي (تظهر للعميل)</span><input name="transit_air_ar" defaultValue={s.transit_air_ar ?? ""} className={input} /></label>
+            <label><span className="mb-1 block text-xs text-slate-500">مدة الوصول — بحري (تظهر للعميل)</span><input name="transit_sea_ar" defaultValue={s.transit_sea_ar ?? ""} className={input} /></label>
+            <label className="md:col-span-2"><span className="mb-1 block text-xs text-slate-500">تنبيه الجمارك (يظهر مع كل تسعيرة)</span><input name="customs_notice_ar" defaultValue={s.customs_notice_ar ?? ""} className={input} /></label>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="prices_are_samples" defaultChecked={s.prices_are_samples} className="h-4 w-4 accent-[#B8923B]" /> إظهار «أسعار تجريبية» للعملاء</label>
+            <SaveButton />
+          </div>
         </ActionForm>
       </Card>
 

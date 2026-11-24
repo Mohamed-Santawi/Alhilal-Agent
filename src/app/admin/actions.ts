@@ -99,32 +99,6 @@ export async function saveRatesTable(_: ActionResult, fd: FormData): Promise<Act
 }
 
 // ---------------------------------------------------------------- FCL containers
-export async function updateFclPrice(_: ActionResult, fd: FormData): Promise<ActionResult> {
-  return run(async () => {
-    const me = await guard();
-    const key = String(fd.get("container_key") ?? "");
-    const raw = String(fd.get("price") ?? "").trim();
-    const t = now();
-    const cur = await db().from("fcl_rates").select("*").eq("container_key", key).lte("effective_from", t)
-      .or(`effective_to.is.null,effective_to.gt.${t}`).order("effective_from", { ascending: false }).limit(1).maybeSingle();
-
-    if (!raw) { // empty = "price on request"
-      if (!cur.data) return fail("لا يوجد تغيير");
-      await db().from("fcl_rates").update({ effective_to: t }).eq("id", cur.data.id);
-      await audit(me.id, "fcl.price_removed", "fcl_rates", key, { before: cur.data.price });
-      return done("أصبحت الحاوية «السعر عند الطلب» ✓");
-    }
-    const p = money.safeParse(raw);
-    if (!p.success || p.data <= 0) return fail("السعر غير صحيح");
-    if (cur.data && Number(cur.data.price) === p.data) return fail("لا يوجد تغيير");
-    if (cur.data) await db().from("fcl_rates").update({ effective_to: t }).eq("id", cur.data.id);
-    const ins = await db().from("fcl_rates").insert({ container_key: key, price: p.data, effective_from: t, created_by: me.id }).select("id").single();
-    if (ins.error) throw ins.error;
-    await audit(me.id, "fcl.price_changed", "fcl_rates", ins.data.id, { container: key, before: cur.data?.price ?? null, after: p.data });
-    return done("تم حفظ السعر ✓");
-  });
-}
-
 // ---------------------------------------------------------------- categories
 export async function saveCategory(_: ActionResult, fd: FormData): Promise<ActionResult> {
   return run(async () => {
@@ -237,11 +211,50 @@ export async function updateSettings(_: ActionResult, fd: FormData): Promise<Act
       air_volumetric_divisor: money.pipe(z.number().int().min(1000).max(10000)),
     }).safeParse(Object.fromEntries(fd));
     if (!p.success) return fail("يرجى مراجعة القيم (الصلاحية من 1 إلى 90 يوماً، والمعامل من 1000 إلى 10000)");
-    const row = { ...p.data, prices_are_samples: fd.get("prices_are_samples") === "on", updated_at: now() };
+
+    const feeRaw = String(fd.get("remote_fee_per_carton") ?? "").trim();
+    const fee = feeRaw ? money.safeParse(feeRaw) : null;
+    if (fee && !fee.success) return fail("رسوم المناطق النائية غير صحيحة");
+    const text = (k: string) => String(fd.get(k) ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
+    const transit_air_ar = text("transit_air_ar"), transit_sea_ar = text("transit_sea_ar"), customs_notice_ar = text("customs_notice_ar");
+    if (!transit_air_ar || !transit_sea_ar) return fail("يرجى كتابة مدة الوصول للجوي والبحري");
+
+    const row = {
+      ...p.data,
+      prices_are_samples: fd.get("prices_are_samples") === "on",
+      mixed_pricing: fd.get("mixed_pricing") === "per_item" ? "per_item" : "highest",
+      remote_fee_per_carton: fee?.success && fee.data > 0 ? fee.data : null,
+      transit_air_ar, transit_sea_ar, customs_notice_ar,
+      updated_at: now(),
+    };
     const r = await db().from("shipping_settings").update(row).eq("id", 1);
     if (r.error) throw r.error;
     await audit(me.id, "settings.updated", "shipping_settings", "1", row);
     return done("تم حفظ الإعدادات ✓");
+  });
+}
+
+// ---------------------------------------------------------------- main cities (no remote fee)
+export async function addCities(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  return run(async () => {
+    const me = await guard();
+    const names = [...new Set(String(fd.get("names") ?? "").split(/[,،\n]+/).map((x) => x.replace(/\s+/g, " ").trim()).filter((x) => x.length >= 2 && x.length <= 60))];
+    if (!names.length) return fail("يرجى كتابة اسم مدينة واحدة على الأقل");
+    const r = await db().from("shipping_cities").upsert(names.map((name_ar) => ({ name_ar })), { onConflict: "name_ar", ignoreDuplicates: true });
+    if (r.error) throw r.error;
+    await audit(me.id, "cities.added", "shipping_cities", "-", { names });
+    return done(`تمت إضافة ${names.length} مدينة ✓`);
+  });
+}
+
+export async function deleteCity(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  return run(async () => {
+    const me = await guard();
+    const id = String(fd.get("id") ?? "");
+    const r = await db().from("shipping_cities").delete().eq("id", id).select("name_ar").maybeSingle();
+    if (r.error) throw r.error;
+    await audit(me.id, "city.deleted", "shipping_cities", id, { name_ar: r.data?.name_ar });
+    return done("تم الحذف ✓");
   });
 }
 

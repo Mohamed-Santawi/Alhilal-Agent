@@ -1,47 +1,33 @@
-import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import { db } from "@/lib/supabase";
 import { peekFormToken } from "@/lib/forms/tokens";
-import type { Carton, Kind } from "@/lib/shipping/pricing";
-import { createAndSendQuote } from "@/lib/shipping/quote-service";
+import type { Kind } from "@/lib/shipping/pricing";
+import { submitShipment, type ItemInput } from "@/lib/shipping/quote-service";
 
 export const runtime = "nodejs";
 
-const MAX_PHOTO_BYTES = 4 * 1024 * 1024; // Vercel request limit is ~4.5 MB; the browser resizes before upload
 const bad = (error: string) => NextResponse.json({ error }, { status: 422 });
 
+/** Calculator submit (JSON). Photos were already uploaded one by one to /api/quote/photo. */
 export async function POST(req: NextRequest) {
-  let form: FormData;
-  try { form = await req.formData(); } catch { return NextResponse.json({ error: "bad_request" }, { status: 400 }); }
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== "object") return NextResponse.json({ error: "bad_request" }, { status: 400 });
 
-  const tok = await peekFormToken(String(form.get("token") ?? ""), "quote");
+  const tok = await peekFormToken(String(body.token ?? ""), "quote");
   if (!tok) return NextResponse.json({ error: "expired" }, { status: 410 });
+  if (!Array.isArray(body.items)) return bad("بيانات غير صحيحة");
 
-  let cartons: Carton[] = [];
-  let containers: { key: string; count: number }[] = [];
-  try {
-    cartons = JSON.parse(String(form.get("cartons") ?? "[]"));
-    containers = JSON.parse(String(form.get("containers") ?? "[]"));
-  } catch { return bad("بيانات غير صحيحة"); }
-
-  // Optional product photo → private bucket
-  let photo_path: string | null = null;
-  const photo = form.get("photo");
-  if (photo instanceof File && photo.size > 0) {
-    if (!photo.type.startsWith("image/")) return bad("يجب أن يكون الملف صورة (JPG / PNG)");
-    if (photo.size > MAX_PHOTO_BYTES) return bad("حجم الصورة كبير، يرجى اختيار صورة أصغر");
-    const path = `${tok.customer_id}/${randomUUID()}.jpg`;
-    const up = await db().storage.from("quote-photos").upload(path, Buffer.from(await photo.arrayBuffer()), { contentType: photo.type });
-    if (up.error) console.error("[quote] photo upload failed", up.error);
-    else photo_path = path;
-  }
-
-  const r = await createAndSendQuote({
+  const r = await submitShipment({
     customerId: tok.customer_id,
-    category: String(form.get("category") ?? ""),
-    kind: String(form.get("kind") ?? "") as Kind,
-    cartons, containers, photo_path,
+    kind: String(body.kind ?? "") as Kind,
+    items: body.items as ItemInput[],
+    city: String(body.city ?? ""),
+    requirePhotos: true,
+    containers: Array.isArray(body.containers) ? body.containers : [],
+    port: body.port,
+    factory_address: body.factory_address,
+    services: Array.isArray(body.services) ? body.services : [],
+    notes: body.notes,
   });
   if (!r.ok) return bad(r.error);
-  return NextResponse.json({ quote: r.quote, category: r.category, b: r.b, registered: r.registered, samples: r.samples });
+  return NextResponse.json(r);
 }

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { peekFormToken } from "@/lib/forms/tokens";
 import { db } from "@/lib/supabase";
-import { getShippingSettings, listCategoryOptions, listContainerOptions } from "@/lib/shipping/repo";
+import { getShippingSettings, listCategoryOptions, listContainerOptions, listMainCities } from "@/lib/shipping/repo";
 import { Shell } from "../register/Shell";
 import QuoteForm from "./QuoteForm";
 
@@ -27,9 +27,10 @@ export default async function QuotePage({ searchParams }: { searchParams: Promis
     );
   }
 
-  const [categories, containers, settings, cust] = await Promise.all([
+  const [categories, containers, cities, settings, cust] = await Promise.all([
     listCategoryOptions(),
     listContainerOptions(),
+    listMainCities(),
     getShippingSettings(),
     db().from("customers").select("code, registration_complete").eq("id", tok.customer_id).single(),
   ]);
@@ -40,8 +41,12 @@ export default async function QuotePage({ searchParams }: { searchParams: Promis
         token={t}
         categories={categories}
         containers={containers}
+        cities={cities}
         samples={settings.prices_are_samples}
         divisor={settings.air_volumetric_divisor}
+        remoteFee={settings.remote_fee_per_carton}
+        transit={{ air: settings.transit_air_ar, sea: settings.transit_sea_ar }}
+        customsNotice={settings.customs_notice_ar}
       />
     </Shell>
   );
