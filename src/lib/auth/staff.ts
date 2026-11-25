@@ -6,6 +6,10 @@ export type StaffRole = "admin" | "sales" | "china_team" | "finance" | "legal" |
 export type Staff = { id: string; full_name: string; email: string | null; role: StaffRole };
 
 export const PRICING_ROLES: StaffRole[] = ["admin", "finance"];
+export const ALL_ROLES: StaffRole[] = ["admin", "sales", "china_team", "finance", "legal", "support"];
+export const ROLE_AR: Record<StaffRole, string> = {
+  admin: "مدير", finance: "مالية", sales: "مبيعات", china_team: "فريق الصين", legal: "قانوني", support: "خدمة عملاء",
+};
 
 /** The logged-in staff member, or null (not logged in / not a staff member / deactivated). */
 export async function currentStaff(): Promise<Staff | null> {

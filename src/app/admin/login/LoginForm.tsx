@@ -21,7 +21,7 @@ export default function LoginForm() {
       setBusy(false);
       return setError(error.message.includes("Invalid") ? "البريد الإلكتروني أو كلمة المرور غير صحيحة" : "حدثت مشكلة، يرجى المحاولة مرة أخرى");
     }
-    window.location.href = "/admin/pricing";
+    window.location.href = "/admin";
   }
 
   const input = "w-full rounded-xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-[#D4AF5A] focus:ring-2 focus:ring-[#D4AF5A]/30";

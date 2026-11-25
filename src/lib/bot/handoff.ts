@@ -1,6 +1,7 @@
 import { db } from "../supabase";
 import { wa } from "../whatsapp/send";
 import { audit, logOutbound, type Conversation, type Customer } from "./repo";
+import { createTask } from "./tasks";
 
 export const HUMAN_MODE_HOURS = 24;
 
@@ -16,10 +17,9 @@ export async function handoffToHuman(customer: Customer, conv: Conversation, rea
   // One open handoff task per customer is enough
   const open = await db().from("tasks").select("id").eq("customer_id", customer.id).eq("type", "handoff").in("status", ["open", "in_progress"]).limit(1);
   if (!open.data?.length) {
-    await db().from("tasks").insert({
-      customer_id: customer.id, type: "handoff",
-      title: `تواصل مع ${customer.full_name ?? customer.code} (${customer.wa_id}) — ${reason}`.slice(0, 300),
-      due_at: new Date(Date.now() + 2 * 3600_000).toISOString(),
+    await createTask({
+      customer_id: customer.id, type: "handoff", due_hours: 2,
+      title: `تواصل مع ${customer.full_name ?? customer.code} (${customer.wa_id}) — ${reason}`,
     });
   }
   await audit("bot", "conversation.handoff", "conversations", conv.id, { reason });

@@ -4,6 +4,7 @@ import { db } from "../supabase";
 import { getQuote } from "../shipping/repo";
 import { wa } from "../whatsapp/send";
 import { audit, logOutbound, setState, type Conversation, type Customer } from "./repo";
+import { createTask } from "./tasks";
 import { sendMainMenu } from "./menu";
 
 export const QUOTE_LINK_TTL_MIN = 24 * 60; // calculator link: reusable for a day
@@ -64,11 +65,9 @@ export async function acceptQuote(customer: Customer, conv: Conversation, quoteI
   }
 
   await db().from("shipping_quotes").update({ status: "accepted", accepted_at: new Date().toISOString() }).eq("id", q.id);
-  await db().from("tasks").insert({
-    customer_id: customer.id,
-    type: "shipping_quote",
+  await createTask({
+    customer_id: customer.id, type: "shipping_quote", quote_id: q.id,
     title: `طلب شحن من ${customer.full_name ?? customer.code} — ${q.code} — ${Number(q.total).toLocaleString("en-US")} ريال`,
-    due_at: new Date(Date.now() + 24 * 3600_000).toISOString(),
   });
   await audit(customer.id, "quote.accepted", "shipping_quotes", q.id, { code: q.code, total: q.total });
   await say(customer, conv, [
@@ -84,11 +83,9 @@ export async function requestService(customer: Customer, conv: Conversation, key
   const dup = await db().from("tasks").select("id").eq("customer_id", customer.id).eq("type", "service_request")
     .eq("status", "open").ilike("title", `%${key}%`).gte("created_at", since).limit(1);
   if (!dup.data?.length) {
-    await db().from("tasks").insert({
-      customer_id: customer.id,
-      type: "service_request",
+    await createTask({
+      customer_id: customer.id, type: "service_request",
       title: `طلب خدمة «${name}» [${key}] من ${customer.full_name ?? customer.code}`,
-      due_at: new Date(Date.now() + 24 * 3600_000).toISOString(),
     });
     await audit(customer.id, "service.requested", "tasks", undefined, { key, name });
   }

@@ -1,6 +1,7 @@
 import { db } from "../supabase";
 import { wa } from "../whatsapp/send";
 import { audit, logOutbound } from "../bot/repo";
+import { createTask } from "../bot/tasks";
 import {
   computeQuote, FCL_SERVICES, fclRequestMessage, isRemoteCity, LIMITS, measure, modeOf, portName, PORTS,
   quoteMessage, serviceName, validateCartons, type Carton, type Kind, type Notes, type PricedItem, type QuoteBreakdown,
@@ -173,16 +174,16 @@ export async function createFclRequest(input: ShipmentInput): Promise<FclOk | Sh
 
   const cust = await db().from("customers").select("code, full_name, wa_id").eq("id", input.customerId).single();
   const who = cust.data?.full_name ?? cust.data?.code ?? "";
-  await db().from("tasks").insert({
+  await createTask({
     customer_id: input.customerId,
     type: "fcl_request",
+    quote_id: q.id,
     title: [
       `طلب حاوية ${q.code} من ${who} (${cust.data?.wa_id ?? ""})`,
       named.map((c) => `${c.name_ar}×${c.count}`).join(" + "),
       `${portName(port)} ← ${city}`,
       services.length ? `خدمات: ${services.map(serviceName).join("، ")}` : "بدون خدمات إضافية",
-    ].join(" — ").slice(0, 300),
-    due_at: new Date(Date.now() + 24 * 3600_000).toISOString(),
+    ].join(" — "),
   });
   await audit(input.customerId, "fcl.requested", "shipping_quotes", q.id, { code: q.code });
 
