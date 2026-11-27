@@ -4,7 +4,7 @@ import { getOrCreateConversation, getOrCreateCustomer, logInbound, logOutbound, 
 import { GROUPS, MENU_IDS, sendGroupMenu, sendMainMenu, type GroupKey } from "./menu";
 import { registrationSummary, saveRegistration } from "./registration";
 import { handleChatRegistration, startRegistration } from "./registration-chat";
-import { onRegistered, proceedWithQuote, QUOTE_IDS, requestService, sendQuoteLink } from "./quotes";
+import { onRegistered, proceedWithQuote, QUOTE_IDS, requestService, sendMyOrders, sendQuoteLink } from "./quotes";
 import { handoffToHuman, isHumanMode } from "./handoff";
 import { agentEnabled, runAgent } from "../ai/agent";
 
@@ -66,9 +66,7 @@ export async function handleIncoming(msg: Inbound) {
     }
     return requestService(customer, conv, key, msg.text ?? key);
   }
-  if (id === MENU_IDS.myOrders) {
-    return reply(customer.registration_complete ? "لا توجد طلبات على حسابك حتى الآن." : "لا توجد طلبات حتى الآن. يمكنك البدء بحاسبة أسعار الشحن من القائمة 👇");
-  }
+  if (id === MENU_IDS.myOrders) return sendMyOrders(customer, conv);
   if (id === MENU_IDS.human) return handoffToHuman(customer, conv, "طلب التحدث مع موظف من القائمة");
 
   // --- 5. Free text → AI agent ---

@@ -7,6 +7,7 @@ import { wa, WaApiError } from "@/lib/whatsapp/send";
 import { assertStaff, ALL_ROLES, type StaffRole } from "@/lib/auth/staff";
 import { HUMAN_MODE_HOURS } from "@/lib/bot/handoff";
 import type { ActionResult } from "./actions";
+import { cancelOrder, createOrderFromQuote, createServiceOrder, sendFclOffer, setStage } from "@/lib/orders/orders";
 
 const now = () => new Date().toISOString();
 const done = (msg: string, ...paths: string[]): ActionResult => {
@@ -170,5 +171,86 @@ export async function updateStaff(_: ActionResult, fd: FormData): Promise<Action
       return done("تم الحفظ ✓", "/admin/staff");
     }
     return fail("عملية غير معروفة");
+  });
+}
+
+// ---------------------------------------------------------------- orders
+const notifyMsg = (ok: string, notified: boolean | null | undefined, reason?: string) =>
+  notified === false ? `${ok} — ⚠️ لم يصل إشعار للعميل: ${reason ?? "تعذّر الإرسال"}` : ok;
+const amount = (v: FormDataEntryValue | null) => Number(String(v ?? "").replace(/[٠-٩]/g, (c) => String("٠١٢٣٤٥٦٧٨٩".indexOf(c))).replace(/[,٬\s]/g, ""));
+
+export async function orderSetStage(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  return run(async () => {
+    const me = await assertStaff(ALL_ROLES);
+    const id = String(fd.get("id") ?? "");
+    const r = await setStage(id, String(fd.get("stage") ?? ""), me.id, {
+      note: String(fd.get("note") ?? "").trim().slice(0, 300) || undefined,
+      notify: fd.get("notify") === "on",
+    });
+    if (!r.ok) return fail(r.error);
+    return done(notifyMsg(`تم تحديث الحالة إلى «${r.stage.name_ar}» ✓`, r.notified, r.reason), `/admin/orders/${id}`);
+  });
+}
+
+export async function orderCancel(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  return run(async () => {
+    const me = await assertStaff(ALL_ROLES);
+    const id = String(fd.get("id") ?? "");
+    const r = await cancelOrder(id, me.id, String(fd.get("reason") ?? "").trim().slice(0, 300), fd.get("notify") === "on");
+    if (!r.ok) return fail(r.error);
+    return done(notifyMsg("تم إلغاء الطلب", r.notified, r.reason), `/admin/orders/${id}`);
+  });
+}
+
+export async function orderFromQuote(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  return run(async () => {
+    const me = await assertStaff(ALL_ROLES);
+    const quoteId = String(fd.get("quote_id") ?? "");
+    const q = await db().from("shipping_quotes").select("status, total").eq("id", quoteId).single();
+    if (q.data?.total === null || q.data?.total === undefined) return fail("لا يوجد سعر لهذه التسعيرة");
+    if (q.data.status !== "accepted") await db().from("shipping_quotes").update({ status: "accepted", accepted_at: now() }).eq("id", quoteId);
+    const r = await createOrderFromQuote(quoteId, me.id);
+    return done(notifyMsg(r.created ? `تم إنشاء الطلب ${r.order.code} ✓` : `الطلب موجود: ${r.order.code}`, r.notified), `/admin/quotes/${quoteId}`);
+  });
+}
+
+export async function fclOffer(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  return run(async () => {
+    const me = await assertStaff(ALL_ROLES);
+    const quoteId = String(fd.get("quote_id") ?? "");
+    const base = amount(fd.get("base"));
+    if (!(base > 0) || base > 10_000_000) return fail("يرجى كتابة السعر قبل الضريبة");
+    const r = await sendFclOffer(quoteId, base, String(fd.get("note") ?? "").trim().slice(0, 500), me.id);
+    if (!r.ok) return fail(r.error);
+    return done(notifyMsg(`تم إرسال العرض (${r.total.toLocaleString("en-US")} ريال شامل الضريبة) ✓`, r.notified, r.reason), `/admin/quotes/${quoteId}`);
+  });
+}
+
+export async function newServiceOrder(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  return run(async () => {
+    const me = await assertStaff(ALL_ROLES);
+    const customerId = String(fd.get("customer_id") ?? "");
+    const serviceKey = String(fd.get("service_key") ?? "");
+    const title = String(fd.get("title") ?? "").trim();
+    const base = amount(fd.get("base"));
+    const svc = await db().from("services").select("name_ar").eq("key", serviceKey).maybeSingle();
+    if (!svc.data) return fail("يرجى اختيار الخدمة");
+    if (!(base > 0)) return fail("يرجى كتابة المبلغ قبل الضريبة");
+    const r = await createServiceOrder({ customerId, serviceKey, title: title || svc.data.name_ar, base, staffId: me.id });
+    return done(notifyMsg(`تم إنشاء الطلب ${r.order.code} ✓`, r.notified, r.reason), "/admin");
+  });
+}
+
+export async function saveStage(_: ActionResult, fd: FormData): Promise<ActionResult> {
+  return run(async () => {
+    const me = await assertStaff(["admin"]);
+    const key = String(fd.get("key") ?? "");
+    const name_ar = String(fd.get("name_ar") ?? "").trim().slice(0, 60);
+    if (!name_ar) return fail("يرجى كتابة اسم المرحلة");
+    const row = { name_ar, message_ar: String(fd.get("message_ar") ?? "").trim().slice(0, 500) || null, notify: fd.get("notify") === "on", active: fd.get("active") === "on" };
+    const r = await db().from("order_stages").update(row).eq("key", key);
+    if (r.error) throw r.error;
+    await audit(me.id, "stage.updated", "order_stages", key, row);
+    return done("تم الحفظ ✓", "/admin/orders/stages");
   });
 }

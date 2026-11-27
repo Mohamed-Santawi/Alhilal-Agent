@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireStaff } from "@/lib/auth/staff";
 import { db } from "@/lib/supabase";
 import { TASK_TYPE_AR } from "@/lib/bot/tasks";
-import { returnToBot, sendReply, takeOver } from "../../../panel-actions";
+import { newServiceOrder, returnToBot, sendReply, takeOver } from "../../../panel-actions";
 import { ActionForm, SaveButton } from "../../../ui";
 import { AutoRefresh, ReplyBox, ScrollToEnd } from "../../../live";
 import { Badge, Card, KIND_AR, QUOTE_STATUS, sar, stamp, TZ } from "../../bits";
@@ -18,12 +18,14 @@ export default async function Chat({ params }: { params: Promise<{ id: string }>
   if (!conv.data) notFound();
   const c = conv.data.customers as Record<string, string | boolean | null>;
 
-  const [msgs, addr, tasks, quotes, staff] = await Promise.all([
+  const [msgs, addr, tasks, quotes, staff, orders, services] = await Promise.all([
     db().from("messages").select("id, direction, type, body, payload, created_at, sent_by_staff").eq("conversation_id", id).order("created_at", { ascending: false }).limit(200),
     db().from("addresses").select("*").eq("customer_id", conv.data.customer_id).order("is_default", { ascending: false }).limit(1).maybeSingle(),
     db().from("tasks").select("id, type, title, status, created_at").eq("customer_id", conv.data.customer_id).in("status", ["open", "in_progress"]).order("created_at", { ascending: false }),
     db().from("shipping_quotes").select("id, code, kind, status, total, created_at").eq("customer_id", conv.data.customer_id).order("created_at", { ascending: false }).limit(8),
     db().from("staff").select("id, full_name"),
+    db().from("orders").select("id, code, title, status, stage, total_amount, order_stages(name_ar)").eq("customer_id", conv.data.customer_id).order("created_at", { ascending: false }).limit(8),
+    db().from("services").select("key, name_ar, base_price").eq("active", true).order("menu_group").order("sort_order"),
   ]);
   // Opening the chat marks it as read
   await db().from("conversations").update({ staff_seen_at: new Date().toISOString() }).eq("id", id);
@@ -125,6 +127,33 @@ export default async function Chat({ params }: { params: Promise<{ id: string }>
             ))}
           </ul>
           <Link href="/admin/tasks" className="mt-2 block text-xs font-bold text-[#B8923B]">كل المهام ←</Link>
+        </Card>
+
+        <Card title="الطلبات">
+          {!orders.data?.length && <p className="text-sm text-slate-500">لا توجد.</p>}
+          <ul className="space-y-1">
+            {orders.data?.map((o) => (
+              <li key={o.id}>
+                <Link href={`/admin/orders/${o.id}`} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+                  <b dir="ltr">{o.code}</b>
+                  {o.status === "cancelled" ? <Badge tone="red">ملغي</Badge> : <Badge tone={o.status === "completed" ? "green" : "blue"}>{(o.order_stages as unknown as { name_ar: string } | null)?.name_ar ?? o.status}</Badge>}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <details className="mt-3 rounded-lg bg-slate-50 p-2">
+            <summary className="cursor-pointer text-sm font-bold text-[#B8923B]">+ إنشاء طلب خدمة</summary>
+            <ActionForm action={newServiceOrder} className="mt-2 space-y-2">
+              <input type="hidden" name="customer_id" value={conv.data.customer_id} />
+              <select name="service_key" className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm">
+                <option value="">اختر الخدمة</option>
+                {services.data?.filter((x) => !x.key.startsWith("shipping_")).map((x) => <option key={x.key} value={x.key}>{x.name_ar}{x.base_price ? ` (${x.base_price})` : ""}</option>)}
+              </select>
+              <input name="title" placeholder="وصف مختصر (يظهر للعميل)" maxLength={200} className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm" />
+              <input name="base" inputMode="decimal" dir="ltr" placeholder="المبلغ قبل الضريبة" className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm" />
+              <SaveButton label="إنشاء وإبلاغ العميل" />
+            </ActionForm>
+          </details>
         </Card>
 
         <Card title="التسعيرات">

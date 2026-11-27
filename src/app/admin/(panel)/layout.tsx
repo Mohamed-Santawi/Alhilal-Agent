@@ -30,6 +30,7 @@ export default async function PanelLayout({ children }: { children: React.ReactN
           <nav className="flex flex-wrap items-center gap-1 text-sm">
             <NavLink href="/admin/inbox" count={chats.count ?? 0}>المحادثات</NavLink>
             <NavLink href="/admin/tasks" count={tasks.count ?? 0}>المهام</NavLink>
+            <NavLink href="/admin/orders">الطلبات</NavLink>
             <NavLink href="/admin/quotes">التسعيرات</NavLink>
             <NavLink href="/admin/customers">العملاء</NavLink>
             {PRICING_ROLES.includes(me.role) && <NavLink href="/admin/pricing">الأسعار</NavLink>}

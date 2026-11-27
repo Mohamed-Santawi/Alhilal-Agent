@@ -4,6 +4,7 @@ import { createAndSendQuote } from "../shipping/quote-service";
 import { FCL_SERVICES, PORTS } from "../shipping/pricing";
 import { sendMainMenu } from "../bot/menu";
 import { requestService, sendQuoteLink } from "../bot/quotes";
+import { customerOrdersData } from "../orders/orders";
 import { startRegistration } from "../bot/registration-chat";
 import { handoffToHuman } from "../bot/handoff";
 import { logOutbound, setState, type Conversation, type Customer } from "../bot/repo";
@@ -78,7 +79,7 @@ export const TOOL_DEFS: ToolDef[] = [
   },
   {
     type: "function",
-    function: { name: "get_my_account", description: "بيانات العميل الحالي: رقم العميل، حالة التسجيل، وآخر تسعيرات الشحن وحالتها.", parameters: obj({}) },
+    function: { name: "get_my_account", description: "بيانات العميل الحالي: رقم العميل، حالة التسجيل، آخر التسعيرات، وطلباته (رقم الطلب HA-ORD، مرحلته الحالية، كل مراحله، المبلغ). استخدمها عند السؤال عن طلب أو شحنة أو «وين وصلت شحنتي».", parameters: obj({}) },
   },
   {
     type: "function",
@@ -204,6 +205,7 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolCtx): Prom
       return {
         code: customer.code, name: customer.full_name, registered: customer.registration_complete,
         recent_quotes: (q.data ?? []).map((x) => ({ code: x.code, kind: x.kind, total_sar: n(x.total), status: x.status, valid_until: x.valid_until })),
+        orders: await customerOrdersData(customer.id),
       };
     }
 

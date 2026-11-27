@@ -5,6 +5,7 @@ import { getQuote } from "../shipping/repo";
 import { wa } from "../whatsapp/send";
 import { audit, logOutbound, setState, type Conversation, type Customer } from "./repo";
 import { createTask } from "./tasks";
+import { createOrderFromQuote, customerOrdersText } from "../orders/orders";
 import { sendMainMenu } from "./menu";
 
 export const QUOTE_LINK_TTL_MIN = 24 * 60; // calculator link: reusable for a day
@@ -57,24 +58,28 @@ export async function acceptQuote(customer: Customer, conv: Conversation, quoteI
   const q = await getQuote(quoteId);
   if (!q || q.customer_id !== customer.id) return;
 
-  if (q.status === "accepted") return say(customer, conv, `طلبك بالتسعيرة ${q.code} مستلم مسبقاً، وسيتواصل معك فريقنا ✅`);
+  if (q.status === "accepted") {
+    const o = await db().from("orders").select("code").eq("quote_id", q.id).maybeSingle();
+    return say(customer, conv, `طلبك ${o.data?.code ?? `بالتسعيرة ${q.code}`} مستلم مسبقاً ✅ يمكنك متابعته من «طلباتي» في القائمة.`);
+  }
+  if (q.kind === "fcl" && q.total === null) {
+    return say(customer, conv, `طلب الحاوية ${q.code} قيد التسعير، وسيرسل لك فريقنا عرض السعر قريباً.`);
+  }
   if (new Date(q.valid_until) < new Date()) {
     await db().from("shipping_quotes").update({ status: "expired" }).eq("id", q.id);
+    if (q.kind === "fcl") return say(customer, conv, `⏳ انتهت صلاحية عرض الحاوية ${q.code}. سيتواصل معك فريقنا بعرض محدّث.`);
     await say(customer, conv, `⏳ انتهت صلاحية التسعيرة ${q.code} نظراً لتغيّر الأسعار. سنرسل لك الحاسبة مرة أخرى لحساب السعر بالأسعار الحالية.`);
     return sendQuoteLink(customer, conv);
   }
 
   await db().from("shipping_quotes").update({ status: "accepted", accepted_at: new Date().toISOString() }).eq("id", q.id);
+  await audit(customer.id, "quote.accepted", "shipping_quotes", q.id, { code: q.code, total: q.total });
+  // The order message (number, amount, "awaiting payment") is sent by createOrderFromQuote
+  const { order } = await createOrderFromQuote(q.id, "bot");
   await createTask({
     customer_id: customer.id, type: "shipping_quote", quote_id: q.id,
-    title: `طلب شحن من ${customer.full_name ?? customer.code} — ${q.code} — ${Number(q.total).toLocaleString("en-US")} ريال`,
+    title: `طلب جديد ${order.code} من ${customer.full_name ?? customer.code} — ${q.code} — ${Number(q.total).toLocaleString("en-US")} ريال — تواصل مع العميل لتأكيد التفاصيل والدفع`,
   });
-  await audit(customer.id, "quote.accepted", "shipping_quotes", q.id, { code: q.code, total: q.total });
-  await say(customer, conv, [
-    `✅ تم استلام طلب الشحن بالتسعيرة *${q.code}*`,
-    ``,
-    `سيتواصل معك فريقنا خلال 24 ساعة لتأكيد التفاصيل وخطوات الدفع وعنوان المستودع.`,
-  ].join("\n"));
 }
 
 /** Registered customer picked a service: open a task for the team (so the promise below is real). */
@@ -114,4 +119,10 @@ export async function onRegistered(customer: Customer) {
     return requestService(customer, conv, s.key, s.name);
   }
   await sendMainMenu(customer.wa_id, "كيف يمكننا مساعدتك؟");
+}
+
+/** «طلباتي» from the menu. */
+export async function sendMyOrders(customer: Customer, conv: Conversation) {
+  const text = await customerOrdersText(customer.id);
+  return say(customer, conv, text ?? "لا توجد طلبات على حسابك حتى الآن. يمكنك البدء بحاسبة أسعار الشحن من القائمة 👇");
 }

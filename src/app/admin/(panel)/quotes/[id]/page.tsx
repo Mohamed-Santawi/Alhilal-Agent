@@ -4,6 +4,10 @@ import { requireStaff } from "@/lib/auth/staff";
 import { db } from "@/lib/supabase";
 import { portName, serviceName, type Carton } from "@/lib/shipping/pricing";
 import { Badge, Card, KIND_AR, QUOTE_STATUS, sar, stamp } from "../../bits";
+import { fclOffer, orderFromQuote } from "../../../panel-actions";
+import { ActionForm, SaveButton } from "../../../ui";
+
+const input = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#D4AF5A] focus:ring-2 focus:ring-[#D4AF5A]/30";
 
 type Item = { category_ar: string; product: string; cartons: Carton[]; photos: string[] };
 type Line = { name_ar: string; value: number; kind?: string; amount?: number };
@@ -24,6 +28,7 @@ export default async function QuoteDetail({ params }: { params: Promise<{ id: st
   const signed = paths.length ? await db().storage.from("quote-photos").createSignedUrls(paths, 3600) : { data: [] };
   const url = (p: string) => signed.data?.find((x) => x.path === p)?.signedUrl ?? undefined;
   const [label, tone] = QUOTE_STATUS[q.status] ?? [q.status, "gray"];
+  const order = (await db().from("orders").select("id, code").eq("quote_id", id).maybeSingle()).data;
   const containers = (q.containers as { key: string; count: number; name_ar?: string }[] | null) ?? [];
   const named = (b.containers as { name_ar: string; count: number }[] | undefined) ?? containers.map((c) => ({ name_ar: c.key, count: c.count }));
 
@@ -35,8 +40,34 @@ export default async function QuoteDetail({ params }: { params: Promise<{ id: st
           <h1 className="text-xl font-extrabold text-[#0B1B3A]"><span dir="ltr">{q.code}</span> · {KIND_AR[q.kind] ?? q.kind} <Badge tone={tone}>{label}</Badge></h1>
           <p className="text-sm text-slate-500">{stamp(q.created_at)} · {cu.full_name ?? "عميل غير مسجّل"} ({cu.code}) <span dir="ltr">+{cu.wa_id}</span></p>
         </div>
-        {convId && <Link href={`/admin/inbox/${convId}`} className="rounded-lg bg-[#0B1B3A] px-4 py-2 text-sm font-bold text-[#E9C77B]">💬 محادثة العميل</Link>}
+        <div className="flex gap-2">
+          {order && <Link href={`/admin/orders/${order.id}`} className="rounded-lg bg-[#D4AF5A] px-4 py-2 text-sm font-bold text-[#0B1B3A]">📦 الطلب {order.code}</Link>}
+          {convId && <Link href={`/admin/inbox/${convId}`} className="rounded-lg bg-[#0B1B3A] px-4 py-2 text-sm font-bold text-[#E9C77B]">💬 محادثة العميل</Link>}
+        </div>
       </div>
+
+      {q.kind === "fcl" && q.status !== "accepted" && (
+        <Card title={q.offered_at ? "عرض السعر (أُرسل — يمكنك إرسال عرض معدّل)" : "إرسال عرض سعر للعميل"}>
+          {q.offered_at && <p className="mb-3 text-sm text-slate-600">آخر عرض: <b>{sar(q.total)} ريال</b> شامل الضريبة · {stamp(q.offered_at)} · صالح حتى {stamp(q.valid_until)}</p>}
+          <ActionForm action={fclOffer} className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="quote_id" value={id} />
+            <label className="w-48"><span className="mb-1 block text-xs text-slate-500">السعر قبل الضريبة (ريال)</span><input name="base" inputMode="decimal" dir="ltr" defaultValue={q.subtotal ?? ""} className={input} /></label>
+            <label className="min-w-64 flex-1"><span className="mb-1 block text-xs text-slate-500">ملاحظة تظهر للعميل (اختياري)</span><input name="note" defaultValue={q.offer_note ?? ""} placeholder="مثال: يشمل التخليص والنقل إلى المدينة" className={input} /></label>
+            <SaveButton label="إرسال العرض على واتساب" />
+          </ActionForm>
+          <p className="mt-2 text-xs text-slate-500">يصل العميل العرض مع زر «قبول العرض». عند قبوله يُنشأ الطلب تلقائياً.</p>
+        </Card>
+      )}
+
+      {q.kind !== "fcl" && !order && q.total !== null && q.status !== "expired" && (
+        <Card>
+          <ActionForm action={orderFromQuote} confirm="إنشاء طلب من هذه التسعيرة وإبلاغ العميل؟" className="flex flex-wrap items-center justify-between gap-3">
+            <input type="hidden" name="quote_id" value={id} />
+            <p className="text-sm text-slate-600">{q.status === "accepted" ? "العميل قبل التسعيرة، ولم يُنشأ طلب بعد." : "العميل لم يضغط «إكمال الطلب» بعد. يمكنك إنشاء الطلب نيابةً عنه بعد الاتفاق معه."}</p>
+            <SaveButton label="إنشاء طلب" />
+          </ActionForm>
+        </Card>
+      )}
 
       {q.kind === "fcl" && (
         <Card title="طلب الحاوية">
