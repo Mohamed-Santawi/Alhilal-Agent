@@ -4,7 +4,7 @@ import { getOrCreateConversation, getOrCreateCustomer, logInbound, logOutbound, 
 import { GROUPS, MENU_IDS, sendGroupMenu, sendMainMenu, type GroupKey } from "./menu";
 import { registrationSummary, saveRegistration } from "./registration";
 import { handleChatRegistration, startRegistration } from "./registration-chat";
-import { onRegistered, proceedWithQuote, QUOTE_IDS, requestService, sendMyOrders, sendQuoteLink } from "./quotes";
+import { onRegistered, proceedWithQuote, QUOTE_IDS, requestService, sendMyOrders, sendOrderDetail, sendQuoteLink } from "./quotes";
 import { handoffToHuman, isHumanMode } from "./handoff";
 import { agentEnabled, runAgent } from "../ai/agent";
 
@@ -67,11 +67,24 @@ export async function handleIncoming(msg: Inbound) {
     return requestService(customer, conv, key, msg.text ?? key);
   }
   if (id === MENU_IDS.myOrders) return sendMyOrders(customer, conv);
+  if (id.startsWith("order:")) return sendOrderDetail(customer, conv, id.slice("order:".length));
+  if (id === MENU_IDS.menu) {
+    await sendMainMenu(msg.waId, "كيف يمكننا مساعدتك؟ اختر من القائمة 👇");
+    return logOutbound(conv.id, undefined, "interactive", "[القائمة الرئيسية]");
+  }
   if (id === MENU_IDS.human) return handoffToHuman(customer, conv, "طلب التحدث مع موظف من القائمة");
 
   // --- 5. Free text → AI agent ---
   const text = (msg.text ?? "").trim();
   const justGreeting = /^(ال)?سلام|^مرحب|^هلا|^اهلا|^أهلا|^hi\b|^hello\b|^hey\b/i.test(text) && text.length < 30;
+
+  // One-word shortcuts work without the AI
+  const word = text.replace(/[\s.!؟?]+/g, "");
+  if (/^(طلباتي|طلبي|طلبات)$/.test(word)) return sendMyOrders(customer, conv);
+  if (/^(القائمة|قائمة|القائمه|قائمه|menu)$/i.test(word)) {
+    await sendMainMenu(msg.waId, "كيف يمكننا مساعدتك؟ اختر من القائمة 👇");
+    return logOutbound(conv.id, undefined, "interactive", "[القائمة الرئيسية]");
+  }
 
   if (isNew) {
     // First contact: deterministic welcome + menu, then answer the question if there was one.

@@ -5,7 +5,7 @@ import { getQuote } from "../shipping/repo";
 import { wa } from "../whatsapp/send";
 import { audit, logOutbound, setState, type Conversation, type Customer } from "./repo";
 import { createTask } from "./tasks";
-import { createOrderFromQuote, customerOrdersText } from "../orders/orders";
+import { createOrderFromQuote, customerOrdersList, orderDetailText } from "../orders/orders";
 import { sendMainMenu } from "./menu";
 
 export const QUOTE_LINK_TTL_MIN = 24 * 60; // calculator link: reusable for a day
@@ -121,8 +121,31 @@ export async function onRegistered(customer: Customer) {
   await sendMainMenu(customer.wa_id, "كيف يمكننا مساعدتك؟");
 }
 
-/** «طلباتي» from the menu. */
+/** «طلباتي»: a tappable list of the customer's orders. */
 export async function sendMyOrders(customer: Customer, conv: Conversation) {
-  const text = await customerOrdersText(customer.id);
-  return say(customer, conv, text ?? "لا توجد طلبات على حسابك حتى الآن. يمكنك البدء بحاسبة أسعار الشحن من القائمة 👇");
+  const rows = await customerOrdersList(customer.id);
+  if (!rows.length) {
+    const text = "لا توجد طلبات على حسابك حتى الآن.\nيمكنك البدء بحساب سعر شحنتك 👇";
+    const r = await wa.buttons(customer.wa_id, text, [
+      { id: "act:quote", title: "حاسبة أسعار الشحن" },
+      { id: "act:menu", title: "القائمة الرئيسية" },
+      { id: "act:human", title: "التحدث مع موظف" },
+    ]);
+    return logOutbound(conv.id, r.messages?.[0]?.id, "interactive", text);
+  }
+  const text = `📋 *طلباتك* (${rows.length})\nاختر طلباً لعرض تفاصيله ومراحله 👇`;
+  const r = await wa.list(customer.wa_id, text, "عرض الطلبات", [{ title: "طلباتي", rows }]);
+  return logOutbound(conv.id, r.messages?.[0]?.id, "interactive", `${text}\n${rows.map((x) => `• ${x.title} — ${x.description}`).join("\n")}`);
+}
+
+/** Tapped an order → details + stage path, with buttons to go on. */
+export async function sendOrderDetail(customer: Customer, conv: Conversation, orderId: string) {
+  const text = await orderDetailText(orderId, customer.id);
+  if (!text) return say(customer, conv, "لم نجد هذا الطلب على حسابك.");
+  const r = await wa.buttons(customer.wa_id, text, [
+    { id: "act:my_orders", title: "طلباتي" },
+    { id: "act:human", title: "التحدث مع موظف" },
+    { id: "act:menu", title: "القائمة الرئيسية" },
+  ]);
+  return logOutbound(conv.id, r.messages?.[0]?.id, "interactive", text);
 }

@@ -15,6 +15,8 @@ export const MENU_IDS = {
   quote: "act:quote",
   myOrders: "act:my_orders",
   human: "act:human",
+  menu: "act:menu",
+  order: (orderId: string) => `order:${orderId}`,
 };
 
 export async function sendMainMenu(to: string, greeting: string) {

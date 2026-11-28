@@ -19,6 +19,13 @@ export const STATUS_AR: Record<string, string> = {
   draft: "مسودة", pending_review: "قيد المراجعة", pending_quote: "بانتظار التسعير",
 };
 
+/** Buttons under every order message, so the customer never has to dig in the menu. */
+export const orderButtons = (orderId?: string) => [
+  ...(orderId ? [{ id: `order:${orderId}`, title: "تفاصيل الطلب" }] : [{ id: "act:menu", title: "القائمة الرئيسية" }]),
+  { id: "act:my_orders", title: "طلباتي" },
+  { id: "act:human", title: "التحدث مع موظف" },
+];
+
 export async function listStages(track?: Track, includeInactive = false): Promise<Stage[]> {
   let q = db().from("order_stages").select("*").order("track").order("sort_order");
   if (track) q = q.eq("track", track);
@@ -67,7 +74,7 @@ function createdMessage(o: Order, stage?: Stage) {
     ``,
     stage?.message_ar ?? "سيتواصل معك فريقنا بالتفاصيل.",
     ``,
-    `يمكنك متابعة طلبك في أي وقت من «طلباتي» في القائمة.`,
+    `يمكنك متابعة طلبك في أي وقت من زر «طلباتي» 👇`,
   ].filter((x) => x !== null).join("\n");
 }
 
@@ -105,7 +112,7 @@ export async function createOrderFromQuote(quoteId: string, actor: string): Prom
   const order = ins.data as Order;
   await db().from("order_events").insert({ order_id: order.id, to_status: "awaiting_payment", to_stage: first?.key, actor, note: `من التسعيرة ${q.data.code}` });
   await audit(actor, "order.created", "orders", order.id, { code: order.code, quote: q.data.code });
-  const sent = await messageCustomer(order.customer_id, createdMessage(order, first));
+  const sent = await messageCustomer(order.customer_id, createdMessage(order, first), orderButtons(order.id));
   return { order, created: true, notified: sent.ok };
 }
 
@@ -125,7 +132,7 @@ export async function createServiceOrder(p: { customerId: string; serviceKey: st
   const order = ins.data as Order;
   await db().from("order_events").insert({ order_id: order.id, to_status: "awaiting_payment", to_stage: first?.key, actor: p.staffId });
   await audit(p.staffId, "order.created", "orders", order.id, { code: order.code, service: p.serviceKey });
-  const sent = await messageCustomer(order.customer_id, createdMessage(order, first));
+  const sent = await messageCustomer(order.customer_id, createdMessage(order, first), orderButtons(order.id));
   return { order, notified: sent.ok, reason: sent.reason };
 }
 
@@ -153,7 +160,7 @@ export async function setStage(orderId: string, stageKey: string, actor: string,
       stage.message_ar ?? "",
       opts.note ? `\nملاحظة: ${opts.note}` : "",
     ].join("\n").replace(/\n{3,}/g, "\n\n").trim();
-    const sent = await messageCustomer(order.customer_id, text);
+    const sent = await messageCustomer(order.customer_id, text, orderButtons(order.id));
     notified = sent.ok; reason = sent.reason;
   }
   await db().from("order_events").insert({
@@ -172,7 +179,7 @@ export async function cancelOrder(orderId: string, actor: string, reason: string
   await db().from("orders").update({ status: "cancelled", cancelled_reason: reason || null }).eq("id", orderId);
   let notified: boolean | null = null, why: string | undefined;
   if (notify) {
-    const sent = await messageCustomer(order.customer_id, `تم إلغاء طلبك *${order.code}*.${reason ? `\nالسبب: ${reason}` : ""}\n\nلأي استفسار يمكنك التحدث مع موظف من القائمة.`);
+    const sent = await messageCustomer(order.customer_id, `تم إلغاء طلبك *${order.code}*.${reason ? `\nالسبب: ${reason}` : ""}\n\nلأي استفسار يمكنك التحدث مع موظف.`, orderButtons());
     notified = sent.ok; why = sent.reason;
   }
   await db().from("order_events").insert({ order_id: orderId, from_status: order.status, to_status: "cancelled", from_stage: order.stage, actor, note: reason || null, notified });
@@ -217,18 +224,41 @@ export async function sendFclOffer(quoteId: string, base: number, note: string, 
   return { ok: true as const, notified: sent.ok, reason: sent.reason, total };
 }
 
-/** «طلباتي» text for WhatsApp. */
-export async function customerOrdersText(customerId: string): Promise<string | null> {
+/** Rows for the «طلباتي» WhatsApp list (max 10). */
+export async function customerOrdersList(customerId: string) {
   const [orders, stages] = await Promise.all([
-    db().from("orders").select("code, title, status, stage, total_amount, created_at").eq("customer_id", customerId).order("created_at", { ascending: false }).limit(5),
+    db().from("orders").select("id, code, title, status, stage, total_amount").eq("customer_id", customerId).order("created_at", { ascending: false }).limit(10),
     listStages(undefined, true),
   ]);
-  if (!orders.data?.length) return null;
-  const lines = orders.data.map((o) => {
-    const st = o.status === "cancelled" ? "ملغي" : stages.find((s) => s.key === o.stage)?.name_ar ?? STATUS_AR[o.status] ?? o.status;
-    return [`*${o.code}*`, o.title, `الحالة: ${st}`, o.total_amount !== null ? `المبلغ: ${sar(o.total_amount)} ريال` : null].filter(Boolean).join("\n");
+  return (orders.data ?? []).map((o) => {
+    const st = o.status === "cancelled" ? "ملغي" : stages.find((s) => s.key === o.stage)?.name_ar ?? STATUS_AR[o.status] ?? "";
+    return {
+      id: `order:${o.id}`,
+      title: o.code,
+      description: [st, o.total_amount !== null ? `${sar(o.total_amount)} ريال` : null, o.title].filter(Boolean).join(" · "),
+    };
   });
-  return [`📋 *طلباتك* (آخر ${orders.data.length})`, ``, lines.join("\n\n"), ``, `لأي استفسار عن طلب، اكتب سؤالك أو اختر «التحدث مع موظف».`].join("\n");
+}
+
+/** One order with its stage path (✅ done · 🔵 now · ⚪ next). Null if it isn't this customer's. */
+export async function orderDetailText(orderId: string, customerId: string): Promise<string | null> {
+  const o = await db().from("orders").select("*").eq("id", orderId).maybeSingle();
+  if (!o.data || o.data.customer_id !== customerId) return null;
+  const order = o.data as Order & { stage_at: string | null; cancelled_reason: string | null };
+  const stages = (await listStages(order.track, true)).filter((s) => s.active || s.key === order.stage);
+  const cur = stages.findIndex((s) => s.key === order.stage);
+  const cancelled = order.status === "cancelled";
+  const path = stages.map((s, i) => `${cancelled ? "⚪" : i < cur ? "✅" : i === cur ? "🔵" : "⚪"} ${i === cur ? `*${s.name_ar}*` : s.name_ar}`);
+  return [
+    `📦 *طلب ${order.code}*`,
+    order.title ? `${order.title}` : null,
+    order.total_amount !== null ? `المبلغ: ${sar(order.total_amount)} ريال شامل الضريبة` : null,
+    cancelled ? `\n❌ الطلب ملغي${order.cancelled_reason ? `: ${order.cancelled_reason}` : ""}` : null,
+    ``,
+    `*مراحل الطلب:*`,
+    ...path,
+    !cancelled && order.stage_at ? `\nآخر تحديث: ${new Date(order.stage_at).toLocaleDateString("en-GB", { timeZone: "Asia/Riyadh" })}` : null,
+  ].filter((x) => x !== null).join("\n");
 }
 
 /** Compact data for the AI agent. */
