@@ -79,9 +79,9 @@ export async function handleIncoming(msg: Inbound) {
   const justGreeting = /^(ال)?سلام|^مرحب|^هلا|^اهلا|^أهلا|^hi\b|^hello\b|^hey\b/i.test(text) && text.length < 30;
 
   // One-word shortcuts work without the AI
-  const word = text.replace(/[\s.!؟?]+/g, "");
-  if (/^(طلباتي|طلبي|طلبات)$/.test(word)) return sendMyOrders(customer, conv);
-  if (/^(القائمة|قائمة|القائمه|قائمه|menu)$/i.test(word)) {
+  const word = text.replace(/[\s.!؟?\u0640\u064B-\u0652]+/g, "").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/[أإآ]/g, "ا");
+  if (/^(طلباتي|طلبي|طلبات|طلبيتي|شحناتي|شحنتي)$/.test(word)) return sendMyOrders(customer, conv);
+  if (/^(القائمه|قائمه|القائمهالرئيسيه|menu)$/i.test(word)) {
     await sendMainMenu(msg.waId, "كيف يمكننا مساعدتك؟ اختر من القائمة 👇");
     return logOutbound(conv.id, undefined, "interactive", "[القائمة الرئيسية]");
   }
